@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import axios from 'axios';
+import FormData from 'form-data';
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -10,27 +11,22 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const base64 = buffer.toString('base64');
 
-  // Force PDF för fakturor
-  let mimeType = file.type || 'application/pdf';
-  if (file.name?.toLowerCase().endsWith('.pdf')) mimeType = 'application/pdf';
-
-  const params = new URLSearchParams();
-  params.append('base64Image', `data:${mimeType};base64,${base64}`);
-  params.append('language', 'swe'); // Korrekta koden för svenska
-  params.append('OCREngine', '3');
-  params.append('isTable', 'true');
-  params.append('scale', 'true');
-  params.append('detectOrientation', 'true');
-  params.append('filetype', 'PDF'); // Fixar E216
+  const ocrForm = new FormData();
+  ocrForm.append('apikey', process.env.OCR_SPACE_API_KEY || '');
+  ocrForm.append('language', 'auto'); // Auto-detect (funkar perfekt med Engine 3 för svenska)
+  ocrForm.append('OCREngine', '3');
+  ocrForm.append('isTable', 'true');
+  ocrForm.append('scale', 'true');
+  ocrForm.append('detectOrientation', 'true');
+  ocrForm.append('file', buffer, {
+    filename: file.name || 'faktura.pdf',
+    contentType: file.type || 'application/pdf',
+  });
 
   try {
-    const ocrResponse = await axios.post('https://api.ocr.space/parse/image', params, {
-      headers: {
-        'apikey': process.env.OCR_SPACE_API_KEY || '',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+    const ocrResponse = await axios.post('https://api.ocr.space/parse/image', ocrForm, {
+      headers: ocrForm.getHeaders(),
     });
 
     const ocrData = ocrResponse.data;
@@ -41,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const fullText = ocrData.ParsedResults.map((r: any) => r.ParsedText).join('\n').toLowerCase();
 
-    // Samma parsing som innan
+    // Förbättrad parsing för svenska fakturor
     const amount = fullText.match(/(kvar att betala|att betala|totalt|belopp|summa)[\s:]*([\d\s.,]+)[\s]*(kr|sek)/i)?.[2]?.replace(/\s/g, '').replace(',', '.') || 'Ej hittat';
     const dueDate = fullText.match(/(förfallodatum|förfaller|betala senast)[\s:]*(\d{4}-\d{2}-\d{2}|\d{2}[\/.-]\d{2}[\/.-]\d{4})/i)?.[2] || 'Ej hittat';
     const supplier = fullText.match(/(leverantör|säljar|from|avsändare)[\s:]*([a-za-zåäö\s\d]+(?:ab|hb|kb|aktiebolag|as|ltd|inc))/i)?.[2]?.trim() || 'Ej hittat';
@@ -49,7 +45,6 @@ export async function POST(req: NextRequest) {
     const ocrNumber = fullText.match(/(ocr|ocr-nr|ocr nummer)[\s:]*([\d]+)/i)?.[2] || 'Ej hittat';
 
     return new Response(JSON.stringify({
-      fullText: fullText.substring(0, 2000) + '...',
       parsed: {
         amount: amount !== 'Ej hittat' ? `${amount} kr` : 'Ej hittat',
         dueDate,
