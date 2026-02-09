@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const ocrForm = new FormData();
   ocrForm.append('apikey', process.env.OCR_SPACE_API_KEY || '');
   ocrForm.append('language', 'auto');
-  ocrForm.append('OCREngine', '2'); // Engine 2: Snabbare, ingen timeout, bra accuracy på svenska fakturor
+  ocrForm.append('OCREngine', '2'); // Snabb + bra accuracy, ingen timeout
   ocrForm.append('isTable', 'true');
   ocrForm.append('scale', 'true');
   ocrForm.append('detectOrientation', 'true');
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const ocrResponse = await axios.post('https://api.ocr.space/parse/image', ocrForm, {
       headers: ocrForm.getHeaders(),
-      timeout: 60000, // Client-side timeout 60s (för säkerhet)
+      timeout: 60000,
     });
 
     const ocrData = ocrResponse.data;
@@ -46,13 +46,16 @@ export async function POST(req: NextRequest) {
 
     const dueDate = fullText.match(/Förfallodatum ([\d-]{10})/i)?.[1] || 'Ej hittat';
 
-    const supplier = fullText.match(/Betalningsmottagare (Telavox AB)/i)?.[1] ||
+    const supplier = fullText.match(/TELAVOX/i) ? 'Telavox AB' : // Logo/text indikerar Telavox
+                     fullText.match(/Betalningsmottagare ([\w\s]+AB)/i)?.[1]?.trim() ||
                      fullText.match(/(leverantör|säljar|från|avsändare)[\s:]*([a-za-zåäöÅÄÖ\s\d]+(?:ab|hb|kb|aktiebolag))/i)?.[2]?.trim() ||
                      'Ej hittat';
 
-    const invoiceNumber = fullText.match(/Fakturanummer ([\d]+)/i)?.[1] || 'Ej hittat';
+    const invoiceNumber = fullText.match(/Fakturanummer ([\d]+)/i)?.[1] ||
+                          fullText.match(/Faktura ([\d]+)/i)?.[1] || 'Ej hittat';
 
     const ocrNumber = fullText.match(/Till bankgironr ([\d-]+)/i)?.[1]?.replace(/-/g, '') ||
+                      fullText.match(/bankgironr ([\d-]+)/i)?.[1]?.replace(/-/g, '') ||
                       fullText.match(/OCR ([\d#]+)/i)?.[1]?.replace(/#/g, '') ||
                       'Ej hittat';
 
@@ -61,13 +64,13 @@ export async function POST(req: NextRequest) {
       parsed: {
         amount: amount !== 'Ej hittat' ? `${amount} kr` : 'Ej hittat',
         dueDate,
-        supplier: supplier !== 'Ej hittat' ? supplier : 'Ej hittat',
+        supplier,
         invoiceNumber,
         ocrNumber,
       },
     }), { status: 200 });
   } catch (err: any) {
     console.error('OCR Error:', err.message);
-    return new Response(JSON.stringify({ error: err.message || 'OCR misslyckades (timeout eller fel)' }), { status: 500 });
+    return new Response(JSON.stringify({ error: err.message || 'OCR misslyckades' }), { status: 500 });
   }
 }
