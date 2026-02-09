@@ -1,0 +1,5 @@
+{
+  "/api/extract-pdf/route": "app/api/extract-pdf/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/invoices/page": "app/invoices/page.js"
+}

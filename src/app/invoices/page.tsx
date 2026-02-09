@@ -41,9 +41,9 @@ export default function Invoices() {
     try {
       const res = await fetch('/api/extract-pdf', { method: 'POST', body: formData });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'OCR misslyckades');
+      if (!res.ok) throw new Error(data.error);
       setResult(data);
-      fetchInvoices(); // Uppdatera lista efter sparning
+      fetchInvoices(); // Uppdatera lista
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -79,7 +79,7 @@ export default function Invoices() {
             <p><strong>Leverantör:</strong> {result.parsed.supplier}</p>
             <p><strong>Fakturanummer:</strong> {result.parsed.invoiceNumber}</p>
             <p><strong>OCR-nummer:</strong> {result.parsed.ocrNumber}</p>
-            <p className="mt-4 text-green-600 font-medium">{result.message || 'Faktura bearbetad!'}</p>
+            <p className="mt-4 text-green-600 font-medium">{result.message}</p>
           </div>
         )}
       </div>
@@ -88,7 +88,7 @@ export default function Invoices() {
       {invoices.length === 0 ? (
         <p className="text-gray-500">Inga fakturor sparade än.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-6">
           {invoices.map((inv) => (
             <div key={inv.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
               <p><strong>Belopp:</strong> {inv.parsed_data.amount}</p>

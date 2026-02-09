@@ -1,0 +1,10 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/extract-pdf/route.js")
+R.c("server/chunks/536f0_next_dist_38239a76._.js")
+R.c("server/chunks/536f0_axios_lib_f3d3cc12._.js")
+R.c("server/chunks/536f0_mime-db_9f5f4d03._.js")
+R.c("server/chunks/536f0_@supabase_auth-js_dist_module_689a7d22._.js")
+R.c("server/chunks/536f0_ea860828._.js")
+R.c("server/chunks/[root-of-the-server]__7bc34787._.js")
+R.c("server/chunks/4b6a6__next-internal_server_app_api_extract-pdf_route_actions_a43db4c6.js")
+R.m("[project]/buyer-portal-mockup/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/buyer-portal-mockup/src/app/api/extract-pdf/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)")
+module.exports=R.m("[project]/buyer-portal-mockup/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/buyer-portal-mockup/src/app/api/extract-pdf/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)").exports

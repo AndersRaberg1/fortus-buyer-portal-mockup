@@ -1,0 +1,6 @@
+[00:00:01.698] Server  LOG     ✓ Ready in 1237ms
+[00:00:15.639] Server  ERROR   (node:89344) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[00:00:17.698] Server  ERROR   Error: "amount is not defined"
+[00:31:38.762] Server  ERROR   Error: "timeout of 60000ms exceeded"
+[00:47:50.630] Server  ERROR   Error: "amount is not defined"

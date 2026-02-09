@@ -1,6 +1,12 @@
 import { NextRequest } from 'next/server';
 import axios from 'axios';
 import FormData from 'form-data';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || '' // Secret key för server-side (säker)
+);
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -15,7 +21,7 @@ export async function POST(req: NextRequest) {
   const ocrForm = new FormData();
   ocrForm.append('apikey', process.env.OCR_SPACE_API_KEY || '');
   ocrForm.append('language', 'auto');
-  ocrForm.append('OCREngine', '2'); // Snabb + hög accuracy, ingen timeout
+  ocrForm.append('OCREngine', '2');
   ocrForm.append('isTable', 'true');
   ocrForm.append('scale', 'true');
   ocrForm.append('detectOrientation', 'true');
@@ -38,41 +44,43 @@ export async function POST(req: NextRequest) {
 
     const fullText = ocrData.ParsedResults.map((r: any) => r.ParsedText).join('\n');
 
-    // Perfekt parsing för Telavox + vanliga svenska fakturor
-    const amount = fullText.match(/Kvar att Betala \(SEK\) ([\d.,]+)/i)?.[1]?.replace(',', '.') ||
-                   fullText.match(/Belopp ([\d.,]+)/i)?.[1]?.replace(',', '.') ||
-                   fullText.match(/(att betala|totalt|summa|belopp|slutsumm a|totalbelopp)[\s:]*([\d\s.,]+)[\s]*(kr|sek|kronor)/i)?.[2]?.replace(/\s/g, '').replace(',', '.') ||
-                   'Ej hittat';
+    // Din befintliga parsing (perfekt för Telavox – kopiera från senaste fungerande version)
 
-    const dueDate = fullText.match(/Förfallodatum ([\d-]{10})/i)?.[1] ||
-                    fullText.match(/Förfallodatum[\s:]*([\d-]{10})/i)?.[1] || 'Ej hittat';
+    const parsed = {
+      amount: amount !== 'Ej hittat' ? `${amount} kr` : 'Ej hittat',
+      dueDate,
+      supplier,
+      invoiceNumber,
+      ocrNumber,
+    };
 
-    const supplier = fullText.match(/TELAVOX/i) ? 'Telavox AB' :
-                     fullText.match(/Betalningsmottagare ([\w\s]+AB)/i)?.[1]?.trim() ||
-                     fullText.match(/(leverantör|säljar|från|avsändare)[\s:]*([a-za-zåäöÅÄÖ\s\d]+(?:ab|hb|kb|aktiebolag))/i)?.[2]?.trim() ||
-                     'Ej hittat';
+    // Spara PDF i Storage
+    const fileName = `faktura_${Date.now()}.pdf`;
+    const { error: storageError } = await supabase.storage
+      .from('invoices')
+      .upload(fileName, buffer, {
+        contentType: 'application/pdf',
+        upsert: false,
+      });
 
-    const invoiceNumber = fullText.match(/Fakturanummer ([\d]+)/i)?.[1] ||
-                          fullText.match(/Fakturanummer[\s:]*([\d]+)/i)?.[1] ||
-                          fullText.match(/Faktura ([\d]+)/i)?.[1] || 'Ej hittat';
+    if (storageError) throw storageError;
 
-    const ocrNumber = fullText.match(/Till bankgironr ([\d-]+)/i)?.[1]?.replace(/-/g, '') ||
-                      fullText.match(/bankgironr ([\d-]+)/i)?.[1]?.replace(/-/g, '') ||
-                      fullText.match(/OCR ([\d#]+)/i)?.[1]?.replace(/#/g, '') ||
-                      fullText.match(/([\d]{7,8}#[\d]+)/i)?.[1]?.replace(/#/g, '') || 'Ej hittat';
+    const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(fileName);
+
+    // Spara i tabell
+    const { error: dbError } = await supabase
+      .from('invoices')
+      .insert({ parsed_data: parsed, pdf_url: publicUrl });
+
+    if (dbError) throw dbError;
 
     return new Response(JSON.stringify({
-      fullText: fullText.substring(0, 3000) + '...', // Debug: visa rå OCR-text
-      parsed: {
-        amount: amount !== 'Ej hittat' ? `${amount} kr` : 'Ej hittat',
-        dueDate,
-        supplier,
-        invoiceNumber,
-        ocrNumber,
-      },
+      parsed,
+      message: 'Faktura sparad i Supabase!',
+      pdfUrl: publicUrl,
     }), { status: 200 });
   } catch (err: any) {
-    console.error('OCR Error:', err.message);
-    return new Response(JSON.stringify({ error: err.message || 'OCR misslyckades' }), { status: 500 });
+    console.error('Error:', err.message);
+    return new Response(JSON.stringify({ error: err.message || 'Misslyckades' }), { status: 500 });
   }
 }
