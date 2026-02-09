@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useDropzone } from 'react-dropzone';
 import { useState, useEffect } from 'react';
+import { useDropzone } from 'react-dropzone';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -10,10 +10,10 @@ const supabase = createClient(
 );
 
 export default function Invoices() {
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [latestParsed, setLatestParsed] = useState<any>(null);
 
   const fetchInvoices = async () => {
     const { data, error } = await supabase
@@ -21,8 +21,11 @@ export default function Invoices() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) console.error('Supabase fetch error:', error);
-    else setInvoices(data || []);
+    if (error) {
+      setError(error.message);
+    } else {
+      setInvoices(data || []);
+    }
   };
 
   useEffect(() => {
@@ -31,19 +34,29 @@ export default function Invoices() {
 
   const onDrop = async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
+
     setLoading(true);
     setError(null);
-    setResult(null);
+    setLatestParsed(null);
 
+    const file = acceptedFiles[0];
     const formData = new FormData();
-    formData.append('file', acceptedFiles[0]);
+    formData.append('file', file);
 
     try {
-      const res = await fetch('/api/extract-pdf', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setResult(data);
-      fetchInvoices(); // Uppdatera lista
+      const res = await fetch('/api/extract-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || 'Upload misslyckades');
+      }
+
+      setLatestParsed(result.parsed);
+      await fetchInvoices(); // Uppdatera lista
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -53,56 +66,73 @@ export default function Invoices() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/pdf': ['.pdf'], 'image/*': [] },
+    accept: { 'application/pdf': [], 'image/*': [] },
     maxFiles: 1,
   });
 
   return (
-    <div className="p-6 max-w-4xl mx-auto pb-20 md:pb-6">
-      <h2 className="text-2xl font-bold mb-6">Fakturor & ordrar</h2>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
+      <h1 className="text-3xl font-bold mb-8">Fakturor & ordrar</h1>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-8 mb-8">
-        <p className="font-medium mb-6">Ladda upp ny faktura</p>
-        <div className="border-2 border-dashed rounded-xl p-12 text-center" {...getRootProps()}>
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4">Ladda upp ny faktura</h2>
+        <div
+          {...getRootProps()}
+          className={`border-4 border-dashed rounded-xl p-12 text-center cursor-pointer transition ${
+            isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+          }`}
+        >
           <input {...getInputProps()} />
-          {isDragActive ? <p>Släpp här...</p> : <p>Dra och släpp PDF/bild eller klicka</p>}
+          <p className="text-xl">
+            {isDragActive ? 'Släpp filen här' : 'Dra och släpp PDF/bild eller klicka'}
+          </p>
+          {loading && <p className="mt-4 text-blue-600">Bearbetar...</p>}
+          {error && <p className="mt-4 text-red-600">{error}</p>}
         </div>
+      </section>
 
-        {loading && <p className="text-center text-primary mt-6">Bearbetar med OCR...</p>}
-        {error && <p className="text-red-600 text-center mt-6">{error}</p>}
+      {/* Visa senaste uppladdade direkt */}
+      {latestParsed && (
+        <section className="mb-12">
+          <h2 className="text-2xl font-semibold mb-4">Nyuppladdad faktura (bearbetad)</h2>
+          <div className="bg-green-50 dark:bg-green-900 rounded-xl shadow p-6">
+            <p><strong>Belopp:</strong> {latestParsed.amount}</p>
+            <p><strong>Förfallodatum:</strong> {latestParsed.dueDate}</p>
+            <p><strong>Leverantör:</strong> {latestParsed.supplier}</p>
+            <p><strong>Fakturanummer:</strong> {latestParsed.invoiceNumber}</p>
+            <p><strong>OCR-nummer:</strong> {latestParsed.ocrNumber}</p>
+            <p><strong>Bankgiro:</strong> {latestParsed.bankgiro}</p>
+          </div>
+        </section>
+      )}
 
-        {result && (
-          <div className="mt-8 bg-green-50 dark:bg-green-900/20 rounded-xl p-6">
-            <h3 className="font-bold mb-4">Extraherad data</h3>
-            <p><strong>Belopp:</strong> {result.parsed.amount}</p>
-            <p><strong>Förfallodatum:</strong> {result.parsed.dueDate}</p>
-            <p><strong>Leverantör:</strong> {result.parsed.supplier}</p>
-            <p><strong>Fakturanummer:</strong> {result.parsed.invoiceNumber}</p>
-            <p><strong>OCR-nummer:</strong> {result.parsed.ocrNumber}</p>
-            <p className="mt-4 text-green-600 font-medium">{result.message}</p>
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Sparade fakturor</h2>
+        {invoices.length === 0 ? (
+          <p>Inga fakturor sparade än.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {invoices.map((inv) => (
+              <div key={inv.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
+                <p><strong>Belopp:</strong> {inv.amount || 'Ej hittat'}</p>
+                <p><strong>Förfallodatum:</strong> {inv.due_date || 'Ej hittat'}</p>
+                <p><strong>Leverantör:</strong> {inv.supplier || 'Ej hittat'}</p>
+                <p><strong>Fakturanummer:</strong> {inv.invoice_number || 'Ej hittat'}</p>
+                <p><strong>OCR-nummer:</strong> {inv.ocr_number || 'Ej hittat'}</p>
+                <p><strong>Bankgiro:</strong> {inv.bankgiro || 'Ej hittat'}</p>
+                <a
+                  href={inv.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 inline-block text-blue-600 hover:underline"
+                >
+                  Öppna PDF
+                </a>
+              </div>
+            ))}
           </div>
         )}
-      </div>
-
-      <h3 className="text-xl font-bold mb-6">Sparade fakturor</h3>
-      {invoices.length === 0 ? (
-        <p className="text-gray-500">Inga fakturor sparade än.</p>
-      ) : (
-        <div className="space-y-6">
-          {invoices.map((inv) => (
-            <div key={inv.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-              <p><strong>Belopp:</strong> {inv.parsed_data.amount}</p>
-              <p><strong>Förfallodatum:</strong> {inv.parsed_data.dueDate}</p>
-              <p><strong>Leverantör:</strong> {inv.parsed_data.supplier}</p>
-              <p><strong>Fakturanummer:</strong> {inv.parsed_data.invoiceNumber}</p>
-              <p><strong>OCR-nummer:</strong> {inv.parsed_data.ocrNumber}</p>
-              <a href={inv.pdf_url} target="_blank" rel="noopener noreferrer" className="mt-4 inline-block bg-primary text-white px-4 py-2 rounded-lg">
-                Öppna PDF
-              </a>
-            </div>
-          ))}
-        </div>
-      )}
+      </section>
     </div>
   );
 }
