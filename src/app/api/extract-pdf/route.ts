@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
 
     const fullText = ocrData.ParsedResults.map((r: any) => r.ParsedText).join('\n');
 
-    // Ultimat robust parsing för Telavox + vanliga svenska fakturor
-    const amountMatch = fullText.match(/(kvar att betala|att betala|totalt|summa|belopp|slutsumm a|totalbelopp|summa \(sek\)|kvar att betala \(sek\))[\s:]*([\d\s.,]+)[\s]*(kr|sek|kronor)/i);
+    // Ultimat parsing för Telavox + vanliga svenska fakturor
+    const amountMatch = fullText.match(/(kvar att betala|att betala|totalt|summa|belopp|slutsumm a|totalbelopp|summa \(sek\)|kvar att betala \(sek\))[\s:]*([\d\s.,]+)[\s]*(kr|sek|kronor|\(inkl\. moms\))/i);
     const amount = amountMatch ? amountMatch[2].replace(/\s/g, '').replace(',', '.') : 'Ej hittat';
 
     const dueDateMatch = fullText.match(/(förfallodatum|förfaller|betala senast|due date|betalas senast)[\s:]*(\d{4}-\d{2}-\d{2}|\d{2}[\/.-]\d{2}[\/.-]\d{4})/i);
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const invoiceNumberMatch = fullText.match(/(fakturanummer|faktura nr|fakturanr|invoice no|invoice number|faktura#|faktura)[\s:]*([\d]+)/i);
     const invoiceNumber = invoiceNumberMatch ? invoiceNumberMatch[2] : 'Ej hittat';
 
-    const ocrNumberMatch = fullText.match(/(bankgiro|bg|plusgiro|ocr|ocr-nr|ocr nummer|bankgironr)[\s:]*([\d\s-#]+)/i);
+    const ocrNumberMatch = fullText.match(/(bankgiro|bg|plusgiro|ocr|ocr-nr|ocr nummer|bankgironr|till bankgironr)[\s:]*([\d\s-#]+)/i);
     const ocrNumber = ocrNumberMatch ? ocrNumberMatch[2].replace(/\s|-|#|/g, '') : 'Ej hittat';
 
     return new Response(JSON.stringify({
