@@ -52,14 +52,14 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-beta',  // Vision-stark + billig
+        model: 'grok-4',  // Rätt vision-model
         messages: [
           {
             role: 'user',
             content: [
               { type: 'text', text: VISION_PROMPT },
               ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
-            ] as any  // Bypass OpenAI SDK type-klagan för Grok vision
+            ] as any  // Fixar type-klagan i OpenAI SDK för Grok
           }
         ],
         temperature: 0,
