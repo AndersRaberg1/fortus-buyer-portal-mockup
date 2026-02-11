@@ -11,7 +11,7 @@ const grok = new OpenAI({
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 const SYSTEM_PROMPT = `Du är en expert på svenska och internationella fakturor (DHL, Worldline/Bambora m.fl.).
-Svara ENDAST med giltig JSON enligt detta exakta schema. Inget annat – ingen förklaring, ingen markdown, ingen extra text.
+Svara ENDAST med giltig JSON enligt detta exекта schema. Inget annat – ingen förklaring, ingen markdown, ingen extra text.
 Schema:
 {
   "invoice_number": string,
@@ -45,13 +45,14 @@ export async function POST(request: NextRequest) {
         { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } }
       ];
     } else if (file.type === 'application/pdf') {
-      // PDF → text-extraktion (dynamisk import fixar build-felet)
+      // PDF → text-extraktion (fixad dynamisk import för build)
       let pdfData;
       try {
         const pdfParseLib = await import('pdf-parse');
-        pdfData = await pdfParseLib.default(buffer);
+        const pdfParseFunc = (pdfParseLib as any).default || pdfParseLib;
+        pdfData = await pdfParseFunc(buffer);
       } catch (e: any) {
-        results.push({ error: 'PDF-parse fel (dynamisk import)', details: e.message || String(e) });
+        results.push({ error: 'PDF-parse fel (import)', details: e.message || String(e) });
         continue;
       }
 
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026 – full bild/text-support
+        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content }
