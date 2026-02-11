@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { getDocument } from 'pdfjs-dist';
+import pdfParse from 'pdf-parse';  // Redan i ditt repo
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -27,27 +27,6 @@ Schema:
 }
 Prioritera grand total ("Att betala" / "Belopp att betala"). Var extremt noggrann med svenska fakturor.`;
 
-const USER_PROMPT = "Extrahera all nyckeldata från fakturabilderna.";
-
-async function pdfToBase64Images(buffer: Buffer): Promise<string[]> {
-  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
-  const pdf = await loadingTask.promise;
-  const images: string[] = [];
-
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement('canvas');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    const context = canvas.getContext('2d')!;
-    await page.render({ canvasContext: context, viewport }).promise;
-    images.push(canvas.toDataURL('image/png'));
-  }
-
-  return images;
-}
-
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const files = formData.getAll('files') as File[];
@@ -57,15 +36,29 @@ export async function POST(request: NextRequest) {
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    let images: string[] = [];
+    let content: any[] = [];
 
     if (file.type.startsWith('image/')) {
-      images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
+      // Bilder → vision
+      const base64 = buffer.toString('base64');
+      content = [
+        { type: 'text', text: 'Extrahera all nyckeldata från fakturabilderna.' },
+        { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } }
+      ];
     } else if (file.type === 'application/pdf') {
+      // PDF → text-extraktion (pdf-parse)
       try {
-        images = await pdfToBase64Images(buffer);  // Konverterar PDF till bilder
+        const pdfData = await pdfParse(buffer);
+        const extractedText = pdfData.text;
+        if (extractedText.length < 100) {
+          results.push({ error: 'PDF verkar skannad – låg text. Ladda upp som bilder istället.' });
+          continue;
+        }
+        content = [
+          { type: 'text', text: `Extrahera all nyckeldata från denna fakturatext:\n\n${extractedText}` }
+        ];
       } catch (e) {
-        results.push({ error: 'PDF-konverteringsfel', details: String(e) });
+        results.push({ error: 'PDF-parse fel', details: String(e) });
         continue;
       }
     } else {
@@ -73,24 +66,13 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    if (images.length === 0) {
-      results.push({ error: 'Inga sidor/bilder hittades' });
-      continue;
-    }
-
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-2-vision-1212',  // Rätt vision-modell feb 2026 – läser bilder/PDF perfekt
+        model: 'grok-4',  // Senaste flaggskeppsmodellen feb 2026 (multimodal + reasoning)
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: USER_PROMPT },
-              ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
-            ] as any
-          }
+          { role: 'user', content }
         ],
         response_format: { type: "json_object" },
         temperature: 0,
@@ -103,8 +85,8 @@ export async function POST(request: NextRequest) {
 
     let parsed;
     try {
-      const content = completion.choices[0].message.content?.trim() || '';
-      parsed = JSON.parse(content);
+      const raw = completion.choices[0].message.content?.trim() || '';
+      parsed = JSON.parse(raw);
     } catch (e) {
       results.push({ error: 'JSON-fel från Grok', raw_content: completion.choices[0].message.content });
       continue;
