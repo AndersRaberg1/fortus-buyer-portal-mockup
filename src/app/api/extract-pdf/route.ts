@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-      results.push({ error: 'Ladda upp som bilder/PNG för tillfället' });
+      results.push({ error: 'Ladda upp som bilder/PNG för tillfället (PDF-support kommer)' });
       continue;
     }
 
@@ -52,21 +52,21 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4',  // Rätt vision-model
+        model: 'grok-4-1-fast-reasoning',  // Rätt vision-model (feb 2026, stark + billig)
         messages: [
           {
             role: 'user',
             content: [
               { type: 'text', text: VISION_PROMPT },
               ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
-            ] as any  // Fixar type-klagan i OpenAI SDK för Grok
+            ] as any  // Fixar SDK type-klagan för Grok vision
           }
         ],
         temperature: 0,
         max_tokens: 1024,
       });
     } catch (e) {
-      results.push({ error: 'Grok API-fel (kolla key/model)', details: String(e) });
+      results.push({ error: 'Grok API-fel (kolla key/quota/model)', details: String(e) });
       continue;
     }
 
