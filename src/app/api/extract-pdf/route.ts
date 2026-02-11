@@ -44,7 +44,7 @@ export async function POST(request: Request) {
             ],
           },
         ],
-        model: 'llama-3.2-11b-vision-preview',
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct', // Ny rekommenderad multimodal modell
         temperature: 0,
         max_tokens: 1024,
       });
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       const { error: dbError } = await supabase.from('invoices').upsert({
         invoice_number: parsed.invoice_number,
         amount: parsed.total_amount,
-        due_date: parsed.due_date,
+        due_date_tenant: parsed.due_date,
         supplier: parsed.supplier || 'Telavox AB',
         ocr_number: parsed.ocr_number,
         bankgiro: parsed.bankgiro,
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   }
 }
 
-// Nya exports – ersätter deprecated config och tar bort warning
+// Nya exports – inga warnings
 export const dynamic = 'force-dynamic';     // Tvingar dynamic rendering (nödvändigt för uploads)
 export const runtime = 'nodejs';            // Säkerställer Node.js runtime
-export const maxDuration = 60;              // Tillåt upp till 60 sekunder execution (bra för Groq-vision)
+export const maxDuration = 60;              // Tillåt upp till 60 sekunder execution (bra för Groq)
