@@ -36,7 +36,10 @@ export async function POST(request: Request) {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extrahera exakt från denna Telavox-faktura som JSON: invoice_number (fakturanummer), due_date (förfallodatum YYYY-MM-DD), total_amount (totalbelopp inkl kr), supplier (leverantör), ocr_number (OCR-nr), bankgiro, och line_items som array med description och amount. Var exakt, ingen förklaring.' },
+              { 
+                type: 'text', 
+                text: 'Extrahera exakt från denna Telavox-faktura som JSON: invoice_number (fakturanummer), due_date (förfallodatum YYYY-MM-DD), total_amount (totalbelopp inkl kr), supplier (leverantör), ocr_number (OCR-nr), bankgiro, och line_items som array med description och amount. Var exakt, ingen förklaring.' 
+              },
               { type: 'image_url', image_url: { url: imageUrl } },
             ],
           },
@@ -96,8 +99,7 @@ export async function POST(request: Request) {
   }
 }
 
-export const config = {
-  api: {
-    bodyParser: false, // Viktigt för file uploads
-  },
-};
+// Nya exports – ersätter deprecated config och tar bort warning
+export const dynamic = 'force-dynamic';     // Tvingar dynamic rendering (nödvändigt för uploads)
+export const runtime = 'nodejs';            // Säkerställer Node.js runtime
+export const maxDuration = 60;              // Tillåt upp till 60 sekunder execution (bra för Groq-vision)
