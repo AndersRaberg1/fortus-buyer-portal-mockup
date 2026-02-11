@@ -10,7 +10,7 @@ const grok = new OpenAI({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella, inkl Worldline, DHL). Returnera BARA giltig JSON:
+const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella, inkl Worldline/Bambora, DHL). Returnera BARA giltig JSON:
 
 {
   "invoice_number": string,
@@ -51,26 +51,22 @@ export async function POST(request: NextRequest) {
 
     let completion;
     try {
-      // @ts-ignore – OpenAI SDK-typer klagar på custom baseURL
       completion = await grok.chat.completions.create({
-        model: 'grok-4-1-fast-reasoning',  // Rätt vision-model (billig + stark)
+        model: 'grok-beta',  // Vision-stark + billig
         messages: [
           {
             role: 'user',
             content: [
               { type: 'text', text: VISION_PROMPT },
-              ...images.map(img => ({
-                type: 'image_url' as const,
-                image_url: { url: img, detail: 'high' }  // Bättre OCR
-              }))
-            ]
+              ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
+            ] as any  // Bypass OpenAI SDK type-klagan för Grok vision
           }
         ],
         temperature: 0,
         max_tokens: 1024,
       });
     } catch (e) {
-      results.push({ error: 'Grok API-fel (fel key/model?)', details: String(e) });
+      results.push({ error: 'Grok API-fel (kolla key/model)', details: String(e) });
       continue;
     }
 
