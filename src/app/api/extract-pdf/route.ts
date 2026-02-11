@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4',  // Senaste flaggskepps-vision-modellen (feb 2026) – full reasoning + vision
+        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026 – full bildsupport + reasoning
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
@@ -62,24 +62,40 @@ export async function POST(request: NextRequest) {
             content: [
               { type: 'text', text: USER_PROMPT },
               ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
-            ] as any  // Fixar SDK type-klagan för Grok vision
+            ] as any
           }
         ],
-        response_format: { type: "json_object" },  // TVINGAR 100% ren JSON
+        response_format: { type: "json_object" },  // TVINGAR ren JSON – löser parse-problem
         temperature: 0,
         max_tokens: 2048,
       });
-    } catch (e) {
-      results.push({ error: 'Grok API-fel (kolla key/quota/model)', details: String(e) });
+
+      // FELLLOGGNING: Skriver ut rå Grok-respons i terminalen (dev-server)
+      const rawContent = completion.choices[0].message.content?.trim() || '';
+      console.log('=== GROK RAW RESPONSE ===');
+      console.log(rawContent);
+      console.log('=== SLUT GROK RESPONSE ===');
+
+    } catch (e: any) {
+      console.error('Grok API-fel:', e);  // FELLLOGGNING i terminal
+      results.push({ 
+        error: 'Grok API-fel – kolla nyckel/quota/modell', 
+        details: e.message || String(e) 
+      });
       continue;
     }
 
     let parsed;
     try {
       const content = completion.choices[0].message.content?.trim() || '';
+      if (!content) throw new Error('Tom respons från Grok');
       parsed = JSON.parse(content);
-    } catch (e) {
-      results.push({ error: 'JSON-fel från Grok', raw: completion.choices[0].message.content });
+    } catch (e: any) {
+      console.error('JSON-parse fel från Grok – rå content:', completion.choices[0].message.content);  // FELLLOGGNING
+      results.push({ 
+        error: 'JSON-fel från Grok – kunde inte parsa', 
+        raw_content: completion.choices[0].message.content  // Syns i frontend/network för debug
+      });
       continue;
     }
 
@@ -110,6 +126,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertError) {
+      console.error('Supabase upsert-fel:', upsertError);  // FELLLOGGNING
       results.push({ error: 'Upsert-fel', details: upsertError.message });
       continue;
     }
@@ -117,6 +134,7 @@ export async function POST(request: NextRequest) {
     results.push({ success: true, parsed, publicUrl });
   }
 
+  revalidatePath('/');
   revalidatePath('/invoices');
 
   return Response.json({ results });
