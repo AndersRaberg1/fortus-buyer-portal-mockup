@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { Trash2, Search, Upload } from 'lucide-react';
+import { Trash2, Search, Upload, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +16,8 @@ export default function Invoices() {
   const [filteredInvoices, setFilteredInvoices] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [statusMessage, setStatusMessage] = useState('');
 
   const fetchInvoices = async () => {
     const { data, error } = await supabase
@@ -24,7 +25,7 @@ export default function Invoices() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) setError(error.message);
+    if (error) console.error('Fetch error:', error);
     else {
       setInvoices(data || []);
       setFilteredInvoices(data || []);
@@ -39,8 +40,8 @@ export default function Invoices() {
     const lower = searchTerm.toLowerCase();
     setFilteredInvoices(
       invoices.filter(inv =>
-        [inv.invoice_number, inv.supplier, inv.amount, inv.due_date].some(field =>
-          field?.toString().toLowerCase().includes(lower)
+        Object.values(inv || {}).some(value =>
+          value?.toString().toLowerCase().includes(lower)
         )
       )
     );
@@ -50,7 +51,8 @@ export default function Invoices() {
     if (acceptedFiles.length === 0) return;
 
     setLoading(true);
-    setError(null);
+    setUploadStatus('loading');
+    setStatusMessage('Bearbetar fil...');
 
     const file = acceptedFiles[0];
     const formData = new FormData();
@@ -62,11 +64,16 @@ export default function Invoices() {
 
       if (!res.ok) throw new Error(result.error || 'Upload misslyckades');
 
+      setUploadStatus('success');
+      setStatusMessage('Faktura parsad och sparad!');
       await fetchInvoices();
     } catch (err: any) {
-      setError(err.message);
+      setUploadStatus('error');
+      setStatusMessage(`Fel: ${err.message}`);
+      console.error('Upload fel:', err);
     } finally {
       setLoading(false);
+      setTimeout(() => setUploadStatus('idle'), 5000);
     }
   };
 
@@ -79,7 +86,7 @@ export default function Invoices() {
     }
 
     const { error } = await supabase.from('invoices').delete().eq('id', inv.id);
-    if (error) setError(error.message);
+    if (error) console.error('Delete error:', error);
     else await fetchInvoices();
   };
 
@@ -102,8 +109,10 @@ export default function Invoices() {
           <input {...getInputProps()} />
           <Upload className="w-16 h-16 mx-auto mb-4" />
           <p className="text-xl">{isDragActive ? 'Släpp filen' : 'Dra och släpp PDF/bild eller klicka'}</p>
-          {loading && <p className="mt-4 text-blue-600">Bearbetar...</p>}
-          {error && <p className="mt-4 text-red-600">{error}</p>}
+          {loading && <Loader2 className="w-8 h-8 mx-auto mt-4 animate-spin" />}
+          {uploadStatus === 'success' && <CheckCircle className="w-8 h-8 mx-auto mt-4 text-green-600" />}
+          {uploadStatus === 'error' && <AlertCircle className="w-8 h-8 mx-auto mt-4 text-red-600" />}
+          {statusMessage && <p className="mt-4 text-lg">{statusMessage}</p>}
         </div>
       </section>
 
@@ -129,13 +138,17 @@ export default function Invoices() {
                 <button onClick={() => deleteInvoice(inv)} className="absolute top-4 right-4 text-red-600">
                   <Trash2 className="w-6 h-6" />
                 </button>
-                <div className="space-y-4">
-                  <p className="text-3xl font-bold">{inv.amount || 'Ej hittat'}</p>
+                <div className="space-y-3 text-lg">
+                  <p className="text-3xl font-bold text-blue-600">{inv.amount || 'Ej hittat'}</p>
                   <p><strong>Förfallodatum:</strong> {inv.due_date || 'Ej hittat'}</p>
+                  <p><strong>Fakturadatum:</strong> {inv.invoice_date || 'Ej hittat'}</p>
                   <p><strong>Leverantör:</strong> {inv.supplier || 'Ej hittat'}</p>
+                  <p><strong>Kundnummer:</strong> {inv.customer_number || 'Ej hittat'}</p>
                   <p><strong>Fakturanummer:</strong> {inv.invoice_number || 'Ej hittat'}</p>
                   <p><strong>OCR:</strong> {inv.ocr_number || 'Ej hittat'}</p>
                   <p><strong>Bankgiro:</strong> {inv.bankgiro || 'Ej hittat'}</p>
+                  <p><strong>Momsbelopp:</strong> {inv.vat_amount || 'Ej hittat'}</p>
+                  <p><strong>Moms%:</strong> {inv.vat_percentage || 'Ej hittat'}</p>
                 </div>
                 <div className="mt-6 flex gap-4">
                   <a href={inv.pdf_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-blue-600 text-white py-3 rounded-lg">
