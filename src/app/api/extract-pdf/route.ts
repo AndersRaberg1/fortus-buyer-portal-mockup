@@ -24,9 +24,9 @@ const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella 
   "iban": string | null
 }
 
-Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items.`;
+Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items (t.ex. Terminal fee).`;
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest	NextRequest) {
   const formData = await request.formData();
   const files = formData.getAll('files') as File[];
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-1      results.push({ error: 'Ladda upp fakturasidor som bilder (JPEG/PNG) för tillfället' });
+      results.push({ error: 'Ladda upp fakturasidor som bilder (JPEG/PNG) för tillfället' });
       continue;
     }
 
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     results.push({ success: true, parsed, publicUrl });
   }
 
-  // Refreshar invoices-sidan så listan uppdateras direkt efter upload
+  // Refreshar invoices-sidan direkt efter upload
   revalidatePath('/invoices');
 
   return Response.json({ results });
