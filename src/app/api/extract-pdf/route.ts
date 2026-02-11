@@ -11,7 +11,7 @@ const grok = new OpenAI({
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 const SYSTEM_PROMPT = `Du är en expert på svenska och internationella fakturor (DHL, Worldline/Bambora m.fl.).
-Svara ENDAST med giltig JSON enligt detta exекта schema. Inget annat – ingen förklaring, ingen markdown, ingen extra text.
+Svara ENDAST med giltig JSON enligt detta exakta schema. Inget annat – ingen förklaring, ingen markdown, ingen extra text.
 Schema:
 {
   "invoice_number": string,
@@ -35,55 +35,40 @@ export async function POST(request: NextRequest) {
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    let content: any[] = [];
+    let images: string[] = [];
 
     if (file.type.startsWith('image/')) {
-      // Bilder → vision
-      const base64 = buffer.toString('base64');
-      content = [
-        { type: 'text', text: 'Extrahera all nyckeldata från fakturabilderna.' },
-        { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } }
-      ];
-    } else if (file.type === 'application/pdf') {
-      // PDF → text-extraktion (fixad dynamisk import för build)
-      let pdfData;
-      try {
-        const pdfParseLib = await import('pdf-parse');
-        const pdfParseFunc = (pdfParseLib as any).default || pdfParseLib;
-        pdfData = await pdfParseFunc(buffer);
-      } catch (e: any) {
-        results.push({ error: 'PDF-parse fel (import)', details: e.message || String(e) });
-        continue;
-      }
-
-      const extractedText = pdfData.text;
-      if (extractedText.trim().length < 100) {
-        results.push({ error: 'PDF verkar skannad (låg text) – ladda upp som bilder istället.' });
-        continue;
-      }
-
-      content = [
-        { type: 'text', text: `Extrahera all nyckeldata från denna fakturatext:\n\n${extractedText}` }
-      ];
+      images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-      results.push({ error: 'Ogiltigt format – använd PNG/JPEG/PDF' });
+      results.push({ error: 'Ladda upp som bilder (PNG/JPEG) – PDF-support senare' });
+      continue;
+    }
+
+    if (images.length === 0) {
+      results.push({ error: 'Inga bilder' });
       continue;
     }
 
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026
+        model: 'grok-4',  // Senaste flaggskeppsmodellen feb 2026 – full vision + reasoning
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content }
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Extrahera all nyckeldata från fakturabilderna.' },
+              ...images.map(img => ({ type: 'image_url', image_url: { url: img } }))
+            ]
+          }
         ],
         response_format: { type: "json_object" },
         temperature: 0,
         max_tokens: 2048,
       });
     } catch (e: any) {
-      results.push({ error: 'Grok API-fel', details: e.message || String(e) });
+      results.push({ error: 'Grok API-fel – kolla nyckel/quota/modell', details: e.message || String(e) });
       continue;
     }
 
@@ -124,7 +109,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertError) {
-      results.push({ error: 'Upsert-fel i Supabase', details: upsertError.message });
+      results.push({ error: 'Upsert-fel i Supabase – kolla permissions/RLS/kolumner', details: upsertError.message });
       continue;
     }
 
