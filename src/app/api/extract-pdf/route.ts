@@ -36,12 +36,13 @@ export async function POST(request: Request) {
 
       let ocrData;
       try {
+        console.log('Skickar till OCR Space...');
         const ocrResponse = await axios.post('https://api.ocr.space/parse/image', ocrForm, {
           headers: ocrForm.getHeaders(),
           timeout: 90000,
         });
         ocrData = ocrResponse.data;
-        console.log('OCR Space response:', JSON.stringify(ocrData));
+        console.log('OCR Space klar:', JSON.stringify(ocrData));
       } catch (ocrErr: any) {
         console.error('OCR Space fel:', ocrErr.message);
         results.push({ error: `OCR fel: ${ocrErr.message}`, file: file.name });
@@ -59,15 +60,16 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Groq – bättre prompt för svenska fakturor (explicita termer + fallback)
+      // Groq – kortare text för snabbare svar
       let parsed: any = {};
       let completion: any;
       try {
+        console.log('Skickar till Groq...');
         completion = await groq.chat.completions.create({
           messages: [
             {
               role: 'user',
-              content: `Extrahera från denna svenska faktura och returnera ONLY ett giltigt JSON-objekt, ingen förklaring eller text utanför JSON. Använd svenska termer som "Fakturadatum", "Kundnummer", "Moms 25%", "Momspliktigt belopp", "Momsbelopp". Fält: { "invoice_number": "...", "invoice_date": "YYYY-MM-DD" (Fakturadatum), "due_date": "YYYY-MM-DD" (Förfallodatum/Betalas senast), "total_amount": "...", "vat_amount": "..." (Momsbelopp), "vat_percentage": "..." (Moms%), "customer_number": "..." (Kundnummer), "supplier": "...", "ocr_number": "...", "bankgiro": "...", "line_items": [{"description": "...", "amount": "..."}] }. Text: ${fullText.substring(0, 12000)}`,
+              content: `Extrahera från denna svenska faktura och returnera ONLY ett giltigt JSON-objekt, ingen förklaring eller text utanför JSON. Använd termer som "Fakturadatum", "Kundnummer", "Moms 25%", "Momspliktigt belopp". Fält: { "invoice_number": "...", "invoice_date": "YYYY-MM-DD", "due_date": "YYYY-MM-DD", "total_amount": "...", "vat_amount": "...", "vat_percentage": "...", "customer_number": "...", "supplier": "...", "ocr_number": "...", "bankgiro": "...", "line_items": [{"description": "...", "amount": "..."}] }. Text: ${fullText.substring(0, 8000)}`,
             },
           ],
           model: 'llama-3.3-70b-versatile',
@@ -77,7 +79,6 @@ export async function POST(request: Request) {
         let rawContent = completion.choices[0]?.message?.content || '{}';
         console.log('Groq raw response:', rawContent);
 
-        // Säker trim av code block
         rawContent = rawContent.trim();
         if (rawContent.startsWith('```json')) rawContent = rawContent.slice(7).trimStart();
         if (rawContent.startsWith('```')) rawContent = rawContent.slice(3).trimStart();
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
         parsed.pdf_url = signedUrlData?.signedUrl || null;
       }
 
-      // DB upsert – fallback för nya fält
+      // DB upsert – fallback för alla fält
       const { error: dbError } = await supabase.from('invoices').upsert({
         invoice_number: parsed.invoice_number?.toString(),
         invoice_date: parsed.invoice_date,
@@ -137,4 +138,4 @@ export async function POST(request: Request) {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300; // Ökat – funkar på Pro, cap 60s på hobby
