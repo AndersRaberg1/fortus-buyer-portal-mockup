@@ -2,20 +2,20 @@
   "devFiles": [],
   "ampDevFiles": [],
   "polyfillFiles": [
-    "static/chunks/536f0_next_dist_build_polyfills_polyfill-nomodule.js"
+    "static/chunks/f3cb1_next_dist_build_polyfills_polyfill-nomodule.js"
   ],
   "lowPriorityFiles": [],
   "rootMainFiles": [
-    "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_9373abd1._.js",
-    "static/chunks/536f0_next_dist_compiled_react-dom_31b39b9c._.js",
-    "static/chunks/536f0_next_dist_compiled_react-server-dom-turbopack_577bf2b5._.js",
-    "static/chunks/536f0_next_dist_compiled_next-devtools_index_96c7da5a.js",
-    "static/chunks/536f0_next_dist_compiled_32d54b9b._.js",
-    "static/chunks/536f0_next_dist_client_47226b96._.js",
-    "static/chunks/536f0_next_dist_7d00dbce._.js",
-    "static/chunks/536f0_@swc_helpers_cjs_709a5cfd._.js",
-    "static/chunks/buyer-portal-mockup_a0ff3932._.js",
-    "static/chunks/turbopack-buyer-portal-mockup_55fd0720._.js"
+    "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_9f694c6a._.js",
+    "static/chunks/f3cb1_next_dist_compiled_react-dom_46675546._.js",
+    "static/chunks/f3cb1_next_dist_compiled_react-server-dom-turbopack_2f93741c._.js",
+    "static/chunks/f3cb1_next_dist_compiled_next-devtools_index_b8fd59f2.js",
+    "static/chunks/f3cb1_next_dist_compiled_451edef6._.js",
+    "static/chunks/f3cb1_next_dist_client_bb91e349._.js",
+    "static/chunks/f3cb1_next_dist_9b445821._.js",
+    "static/chunks/f3cb1_@swc_helpers_cjs_ea8dbc38._.js",
+    "static/chunks/fortus-buyer-portal-mockup_a0ff3932._.js",
+    "static/chunks/turbopack-fortus-buyer-portal-mockup_c431892c._.js"
   ],
   "pages": {},
   "ampFirstPages": []

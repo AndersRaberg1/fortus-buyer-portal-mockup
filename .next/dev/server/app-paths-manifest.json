@@ -1,3 +1,4 @@
 {
-  "/analytics/page": "app/analytics/page.js"
+  "/api/extract-pdf/route": "app/api/extract-pdf/route.js",
+  "/invoices/page": "app/invoices/page.js"
 }

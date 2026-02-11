@@ -1,1 +1,2 @@
-[00:00:01.653] Server  LOG     ✓ Ready in 1174ms
+[00:00:01.722] Server  LOG     ✓ Ready in 1199ms
+[00:00:11.439] Server  ERROR   ⨯ Error: supabaseUrl is required.

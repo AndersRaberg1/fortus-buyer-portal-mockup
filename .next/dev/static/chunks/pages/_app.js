@@ -1,13 +1,15 @@
 __turbopack_load_page_chunks__("/_app", [
-  "static/chunks/536f0_next_dist_compiled_6a46abd4._.js",
-  "static/chunks/536f0_next_dist_shared_lib_cfb35cfb._.js",
-  "static/chunks/536f0_next_dist_client_c2963d84._.js",
-  "static/chunks/536f0_next_dist_209606b4._.js",
-  "static/chunks/536f0_next_app_9a022ec2.js",
-  "static/chunks/[next]_entry_page-loader_ts_c115187f._.js",
-  "static/chunks/536f0_react-dom_1786216b._.js",
-  "static/chunks/536f0_c4dd3de4._.js",
-  "static/chunks/[root-of-the-server]__ea8df2a9._.js",
-  "static/chunks/buyer-portal-mockup_pages__app_2da965e7._.js",
-  "static/chunks/turbopack-buyer-portal-mockup_pages__app_ad8998df._.js"
+  "static/chunks/f3cb1_next_dist_compiled_8579dc85._.js",
+  "static/chunks/f3cb1_next_dist_shared_lib_e2f19b7d._.js",
+  "static/chunks/f3cb1_next_dist_client_acc2b952._.js",
+  "static/chunks/f3cb1_next_dist_f9638fad._.js",
+  "static/chunks/f3cb1_next_app_fe87b2e4.js",
+  "static/chunks/[next]_entry_page-loader_ts_2c1ed2c7._.js",
+  "static/chunks/f3cb1_react_e3f846a3._.js",
+  "static/chunks/f3cb1_react-dom_cjs_react-dom_development_7853fb75.js",
+  "static/chunks/f3cb1_react-dom_e8e3deb2._.js",
+  "static/chunks/f3cb1_34dc8123._.js",
+  "static/chunks/[root-of-the-server]__85d0b9a9._.js",
+  "static/chunks/fortus-buyer-portal-mockup_pages__app_2da965e7._.js",
+  "static/chunks/turbopack-fortus-buyer-portal-mockup_pages__app_bd249a09._.js"
 ])
