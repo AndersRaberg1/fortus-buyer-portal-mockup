@@ -10,8 +10,9 @@ const grok = new OpenAI({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella, inkl Worldline/Bambora, DHL). Returnera BARA giltig JSON:
-
+const SYSTEM_PROMPT = `Du är en expert på svenska och internationella fakturor (DHL, Worldline/Bambora m.fl.).
+Svara ENDAST med giltig JSON enligt detta exakta schema. Inget annat – ingen förklaring, ingen markdown, ingen extra text.
+Schema:
 {
   "invoice_number": string,
   "invoice_date": "YYYY-MM-DD",
@@ -23,8 +24,9 @@ const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella,
   "plusgiro": string | null,
   "iban": string | null
 }
+Prioritera grand total ("Att betala" / "Belopp att betala"). Var extremt noggrann med svenska fakturor.`;
 
-Prioritera grand total ("Belopp att betala" eller "Att betala").`;
+const USER_PROMPT = "Extrahera all nyckeldata från fakturabilderna.";
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -52,18 +54,20 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4-1-fast-reasoning',  // Rätt vision-model (feb 2026, stark + billig)
+        model: 'grok-4',  // Senaste flaggskepps-vision-modellen (feb 2026) – full reasoning + vision
         messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: [
-              { type: 'text', text: VISION_PROMPT },
+              { type: 'text', text: USER_PROMPT },
               ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
             ] as any  // Fixar SDK type-klagan för Grok vision
           }
         ],
+        response_format: { type: "json_object" },  // TVINGAR 100% ren JSON
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: 2048,
       });
     } catch (e) {
       results.push({ error: 'Grok API-fel (kolla key/quota/model)', details: String(e) });
