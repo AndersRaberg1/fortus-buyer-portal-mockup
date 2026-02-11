@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { getDocument } from 'pdfjs-dist';
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -28,6 +29,25 @@ Prioritera grand total ("Att betala" / "Belopp att betala"). Var extremt noggran
 
 const USER_PROMPT = "Extrahera all nyckeldata från fakturabilderna.";
 
+async function pdfToBase64Images(buffer: Buffer): Promise<string[]> {
+  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const pdf = await loadingTask.promise;
+  const images: string[] = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    const context = canvas.getContext('2d')!;
+    await page.render({ canvasContext: context, viewport }).promise;
+    images.push(canvas.toDataURL('image/png'));
+  }
+
+  return images;
+}
+
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const files = formData.getAll('files') as File[];
@@ -41,20 +61,27 @@ export async function POST(request: NextRequest) {
 
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
+    } else if (file.type === 'application/pdf') {
+      try {
+        images = await pdfToBase64Images(buffer);  // Konverterar PDF till bilder
+      } catch (e) {
+        results.push({ error: 'PDF-konverteringsfel', details: String(e) });
+        continue;
+      }
     } else {
-      results.push({ error: 'Ladda upp som bilder/PNG för tillfället (PDF-support kommer)' });
+      results.push({ error: 'Ogiltigt format – använd PNG/JPEG/PDF' });
       continue;
     }
 
     if (images.length === 0) {
-      results.push({ error: 'Inga bilder' });
+      results.push({ error: 'Inga sidor/bilder hittades' });
       continue;
     }
 
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026 – full bildsupport + reasoning
+        model: 'grok-2-vision-1212',  // Rätt vision-modell feb 2026 – läser bilder/PDF perfekt
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
@@ -65,37 +92,21 @@ export async function POST(request: NextRequest) {
             ] as any
           }
         ],
-        response_format: { type: "json_object" },  // TVINGAR ren JSON – löser parse-problem
+        response_format: { type: "json_object" },
         temperature: 0,
         max_tokens: 2048,
       });
-
-      // FELLLOGGNING: Skriver ut rå Grok-respons i terminalen (dev-server)
-      const rawContent = completion.choices[0].message.content?.trim() || '';
-      console.log('=== GROK RAW RESPONSE ===');
-      console.log(rawContent);
-      console.log('=== SLUT GROK RESPONSE ===');
-
     } catch (e: any) {
-      console.error('Grok API-fel:', e);  // FELLLOGGNING i terminal
-      results.push({ 
-        error: 'Grok API-fel – kolla nyckel/quota/modell', 
-        details: e.message || String(e) 
-      });
+      results.push({ error: 'Grok API-fel', details: e.message || String(e) });
       continue;
     }
 
     let parsed;
     try {
       const content = completion.choices[0].message.content?.trim() || '';
-      if (!content) throw new Error('Tom respons från Grok');
       parsed = JSON.parse(content);
-    } catch (e: any) {
-      console.error('JSON-parse fel från Grok – rå content:', completion.choices[0].message.content);  // FELLLOGGNING
-      results.push({ 
-        error: 'JSON-fel från Grok – kunde inte parsa', 
-        raw_content: completion.choices[0].message.content  // Syns i frontend/network för debug
-      });
+    } catch (e) {
+      results.push({ error: 'JSON-fel från Grok', raw_content: completion.choices[0].message.content });
       continue;
     }
 
@@ -114,20 +125,19 @@ export async function POST(request: NextRequest) {
 
     const { error: upsertError } = await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number || 'Okänd',
-      amount: parsed.total_amount,
-      due_date: parsed.due_date,
+      amount: Number(parsed.total_amount) ?? 0,
+      due_date: parsed.due_date || null,
       supplier: parsed.supplier || 'Okänd',
-      ocr_number: parsed.ocr_number,
-      bankgiro: parsed.bankgiro,
-      plusgiro: parsed.plusgiro,
-      iban: parsed.iban,
+      ocr_number: parsed.ocr_number || null,
+      bankgiro: parsed.bankgiro || null,
+      plusgiro: parsed.plusgiro || null,
+      iban: parsed.iban || null,
       pdf_url: publicUrl,
       full_parsed_data: parsed,
     });
 
     if (upsertError) {
-      console.error('Supabase upsert-fel:', upsertError);  // FELLLOGGNING
-      results.push({ error: 'Upsert-fel', details: upsertError.message });
+      results.push({ error: 'Upsert-fel i Supabase', details: upsertError.message });
       continue;
     }
 
