@@ -6,6 +6,7 @@ import FormData from 'form-data';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
+ Created!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
@@ -27,18 +28,18 @@ export async function POST(request: Request) {
 
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      // OCR Space – auto-detect language (fixar invalid language error)
+      // OCR Space – auto-detect language
       const ocrForm = new FormData();
       ocrForm.append('file', buffer, file.name);
-      ocrForm.append('apikey', process.env.OCR_SPACE773_API_KEY || 'helloworld');
-      ocrForm.append('language', 'auto'); // Auto-detect (funkar med Engine 2)
+      ocrForm.append('apikey', process.env.OCR_SPACE_API_KEY || 'helloworld');
+      ocrForm.append('language', 'auto');
       ocrForm.append('OCREngine', '2');
 
       let ocrData;
       try {
         const ocrResponse = await axios.post('https://api.ocr.space/parse/image', ocrForm, {
           headers: ocrForm.getHeaders(),
-          timeout: 90000,
+          timeout:_measurement 90000,
         });
         ocrData = ocrResponse.data;
         console.log('OCR Space response:', JSON.stringify(ocrData));
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Groq parsing
+      // Groq – strikt prompt för ONLY JSON
       let parsed: any = {};
       let completion: any;
       try {
@@ -67,14 +68,16 @@ export async function POST(request: Request) {
           messages: [
             {
               role: 'user',
-              content: `Extrahera exakt från denna Telavox-faktura som JSON: invoice_number, due_date (YYYY-MM-DD), total_amount, supplier, ocr_number, bankgiro, line_items (array med description och amount).text: ${fullText.substring(0, 12000)}`,
+              content: `Extrahera från denna Telavox-faktura och returnera ONLY ett giltigt JSON-objekt, ingen förklaring eller text utanför JSON: { "invoice_number": "...", "due_date": "YYYY-MM-DD", "total_amount": "...", "supplier": "...", "ocr_number": "...", "bankgiro": "...", "line_items": [{"description": "...", "amount": "..."}] }. Text: ${fullText.substring(0, 12000)}`,
             },
           ],
           model: 'llama-3.3-70b-versatile',
           temperature: 0,
           max_tokens: 1024,
         });
-        parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+        const rawContent = completion.choices[0]?.message?.content || '{}';
+        console.log('Groq raw response:', rawContent);
+        parsed = JSON.parse(rawContent);
         console.log('Groq parsed:', parsed);
       } catch (e: any) {
         console.error('Groq fel:', e.message);
@@ -99,16 +102,15 @@ export async function POST(request: Request) {
         parsed.pdf_url = signedUrlData?.signedUrl || null;
       }
 
-      // DB upsert
+      // DB upsert – bara essentiella fält (ingen full_parsed_data för att undvika kolumn-fel)
       const { error: dbError } = await supabase.from('invoices').upsert({
-        invoice_number: parsed.invoice_number,
-        amount: parsed.total_amount,
+        invoice_number: parsed.invoice_number?.toString(),
+        amount: parsed.total_amount?.toString(),
         due_date: parsed.due_date,
         supplier: parsed.supplier || 'Telavox AB',
-        ocr_number: parsed.ocr_number,
-        bankgiro: parsed.bankgiro,
+        ocr_number: parsed.ocr_number?.toString(),
+        bankgiro: parsed.bankgiro?.toString(),
         pdf_url: parsed.pdf_url,
-        full_parsed_data: parsed,
       });
 
       if (dbError) console.error('DB error:', dbError);
