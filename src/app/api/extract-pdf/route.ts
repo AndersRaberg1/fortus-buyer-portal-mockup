@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -9,7 +10,7 @@ const grok = new OpenAI({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella format). Returnera BARA giltig JSON, ingen annan text eller markdown:
+const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella format, inkl DHL, Worldline, Telav m.fl.). Returnera BARA giltig JSON, ingen annan text eller markdown:
 
 {
   "invoice_number": string,
@@ -23,7 +24,7 @@ const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella 
   "iban": string | null
 }
 
-Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items (t.ex. Terminal fee).`;
+Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items.`;
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-      results.push({ error: 'Ladda upp fakturasidor som bilder (JPEG/PNG) för tillfället' });
+1      results.push({ error: 'Ladda upp fakturasidor som bilder (JPEG/PNG) för tillfället' });
       continue;
     }
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // @ts-ignore – Grok vision stöds, men OpenAI SDK-typer klagar på custom model/baseURL
     const completion = await grok.chat.completions.create({
-      model: 'grok-beta',  // Vision-capable (perfekt för fakturor)
+      model: 'grok-beta',
       messages: [
         {
           role: 'user',
@@ -75,7 +76,6 @@ export async function POST(request: NextRequest) {
 
     const fileName = `${Date.now()}-${file.name}`;
 
-    // Fixad Supabase-upload (v2+ hanterar publicUrl så här)
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('invoices')
       .upload(`invoices/${fileName}`, buffer, { upsert: true });
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       invoice_number: parsed.invoice_number || 'Okänd',
       amount: parsed.total_amount,
       due_date: parsed.due_date,
-      supplier: parsed.supplier || 'Worldline/Bambora',
+      supplier: parsed.supplier || 'Okänd leverantör',
       ocr_number: parsed.ocr_number,
       bankgiro: parsed.bankgiro,
       plusgiro: parsed.plusgiro,
@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
 
     results.push({ success: true, parsed, publicUrl });
   }
+
+  // Refreshar invoices-sidan så listan uppdateras direkt efter upload
+  revalidatePath('/invoices');
 
   return Response.json({ results });
 }
