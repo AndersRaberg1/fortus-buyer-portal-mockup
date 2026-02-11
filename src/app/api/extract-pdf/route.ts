@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Groq – generell prompt för alla fakturor
+      // Groq – bättre prompt för svenska fakturor (explicita termer + fallback)
       let parsed: any = {};
       let completion: any;
       try {
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
           messages: [
             {
               role: 'user',
-              content: `Extrahera från denna faktura och returnera ONLY ett giltigt JSON-objekt, ingen förklaring eller text utanför JSON: { "invoice_number": "...", "due_date": "YYYY-MM-DD", "total_amount": "...", "supplier": "...", "ocr_number": "...", "bankgiro": "...", "line_items": [{"description": "...", "amount": "..."}] }. Text: ${fullText.substring(0, 12000)}`,
+              content: `Extrahera från denna svenska faktura och returnera ONLY ett giltigt JSON-objekt, ingen förklaring eller text utanför JSON. Använd svenska termer som "Fakturadatum", "Kundnummer", "Moms 25%", "Momspliktigt belopp", "Momsbelopp". Fält: { "invoice_number": "...", "invoice_date": "YYYY-MM-DD" (Fakturadatum), "due_date": "YYYY-MM-DD" (Förfallodatum/Betalas senast), "total_amount": "...", "vat_amount": "..." (Momsbelopp), "vat_percentage": "..." (Moms%), "customer_number": "..." (Kundnummer), "supplier": "...", "ocr_number": "...", "bankgiro": "...", "line_items": [{"description": "...", "amount": "..."}] }. Text: ${fullText.substring(0, 12000)}`,
             },
           ],
           model: 'llama-3.3-70b-versatile',
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         let rawContent = completion.choices[0]?.message?.content || '{}';
         console.log('Groq raw response:', rawContent);
 
-        // Säker trim av eventuell markdown code block (inga regex – undviker syntax-fel)
+        // Säker trim av code block
         rawContent = rawContent.trim();
         if (rawContent.startsWith('```json')) rawContent = rawContent.slice(7).trimStart();
         if (rawContent.startsWith('```')) rawContent = rawContent.slice(3).trimStart();
@@ -108,11 +108,15 @@ export async function POST(request: Request) {
         parsed.pdf_url = signedUrlData?.signedUrl || null;
       }
 
-      // DB upsert – fallback för amount, toString för text-fält
+      // DB upsert – fallback för nya fält
       const { error: dbError } = await supabase.from('invoices').upsert({
         invoice_number: parsed.invoice_number?.toString(),
-        amount: (parsed.total_amount || parsed.amount || 'Ej hittat')?.toString(),
+        invoice_date: parsed.invoice_date,
+        amount: parsed.total_amount?.toString(),
         due_date: parsed.due_date,
+        vat_amount: parsed.vat_amount?.toString(),
+        vat_percentage: parsed.vat_percentage?.toString(),
+        customer_number: parsed.customer_number?.toString(),
         supplier: parsed.supplier || 'Okänd',
         ocr_number: parsed.ocr_number?.toString(),
         bankgiro: parsed.bankgiro?.toString(),
