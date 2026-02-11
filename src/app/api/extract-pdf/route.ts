@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import pdfParse from 'pdf-parse';  // Redan i ditt repo
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -46,21 +45,25 @@ export async function POST(request: NextRequest) {
         { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64}` } }
       ];
     } else if (file.type === 'application/pdf') {
-      // PDF → text-extraktion (pdf-parse)
+      // PDF → text-extraktion (dynamisk import fixar build-felet)
+      let pdfData;
       try {
-        const pdfData = await pdfParse(buffer);
-        const extractedText = pdfData.text;
-        if (extractedText.length < 100) {
-          results.push({ error: 'PDF verkar skannad – låg text. Ladda upp som bilder istället.' });
-          continue;
-        }
-        content = [
-          { type: 'text', text: `Extrahera all nyckeldata från denna fakturatext:\n\n${extractedText}` }
-        ];
-      } catch (e) {
-        results.push({ error: 'PDF-parse fel', details: String(e) });
+        const pdfParseLib = await import('pdf-parse');
+        pdfData = await pdfParseLib.default(buffer);
+      } catch (e: any) {
+        results.push({ error: 'PDF-parse fel (dynamisk import)', details: e.message || String(e) });
         continue;
       }
+
+      const extractedText = pdfData.text;
+      if (extractedText.trim().length < 100) {
+        results.push({ error: 'PDF verkar skannad (låg text) – ladda upp som bilder istället.' });
+        continue;
+      }
+
+      content = [
+        { type: 'text', text: `Extrahera all nyckeldata från denna fakturatext:\n\n${extractedText}` }
+      ];
     } else {
       results.push({ error: 'Ogiltigt format – använd PNG/JPEG/PDF' });
       continue;
@@ -69,7 +72,7 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4',  // Senaste flaggskeppsmodellen feb 2026 (multimodal + reasoning)
+        model: 'grok-4-1-fast-reasoning',  // Senaste vision-modellen feb 2026 – full bild/text-support
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content }
@@ -86,6 +89,7 @@ export async function POST(request: NextRequest) {
     let parsed;
     try {
       const raw = completion.choices[0].message.content?.trim() || '';
+      if (!raw) throw new Error('Tom respons');
       parsed = JSON.parse(raw);
     } catch (e) {
       results.push({ error: 'JSON-fel från Grok', raw_content: completion.choices[0].message.content });
