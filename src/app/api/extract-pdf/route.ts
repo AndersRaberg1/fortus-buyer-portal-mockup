@@ -10,7 +10,7 @@ const grok = new OpenAI({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella format, inkl Worldline/Bambora, DHL m.fl.). Returnera BARA giltig JSON, ingen annan text eller markdown:
+const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella, inkl Worldline, DHL). Returnera BARA giltig JSON:
 
 {
   "invoice_number": string,
@@ -24,7 +24,7 @@ const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella 
   "iban": string | null
 }
 
-Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items (t.ex. Terminal fee).`;
+Prioritera grand total ("Belopp att betala" eller "Att betala").`;
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
@@ -40,26 +40,29 @@ export async function POST(request: NextRequest) {
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-      results.push({ error: 'Ladda upp fakturasidor som bilder (JPEG/PNG) för tillfället' });
+      results.push({ error: 'Ladda upp som bilder/PNG för tillfället' });
       continue;
     }
 
     if (images.length === 0) {
-      results.push({ error: 'Inga bilder hittades' });
+      results.push({ error: 'Inga bilder' });
       continue;
     }
 
     let completion;
     try {
-      // @ts-ignore – Grok vision stöds, men OpenAI SDK-typer klagar på custom model/baseURL
+      // @ts-ignore – OpenAI SDK-typer klagar på custom baseURL
       completion = await grok.chat.completions.create({
-        model: 'grok-4',  // Aktuell vision-model (feb 2026, stödjer bilder perfekt)
+        model: 'grok-4-1-fast-reasoning',  // Rätt vision-model (billig + stark)
         messages: [
           {
             role: 'user',
             content: [
               { type: 'text', text: VISION_PROMPT },
-              ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
+              ...images.map(img => ({
+                type: 'image_url' as const,
+                image_url: { url: img, detail: 'high' }  // Bättre OCR
+              }))
             ]
           }
         ],
@@ -67,17 +70,16 @@ export async function POST(request: NextRequest) {
         max_tokens: 1024,
       });
     } catch (e) {
-      results.push({ error: 'Grok API-call misslyckades', details: String(e) });
+      results.push({ error: 'Grok API-fel (fel key/model?)', details: String(e) });
       continue;
     }
 
     let parsed;
     try {
       const content = completion.choices[0].message.content?.trim() || '';
-      if (!content) throw new Error('Tom response från Grok');
       parsed = JSON.parse(content);
     } catch (e) {
-      results.push({ error: 'JSON parse fel från Grok', details: String(e), raw: completion.choices[0].message.content });
+      results.push({ error: 'JSON-fel från Grok', raw: completion.choices[0].message.content });
       continue;
     }
 
@@ -88,19 +90,17 @@ export async function POST(request: NextRequest) {
       .upload(`invoices/${fileName}`, buffer, { upsert: true });
 
     if (uploadError) {
-      results.push({ error: 'Storage upload error', details: uploadError.message });
+      results.push({ error: 'Storage-fel', details: uploadError.message });
       continue;
     }
 
-    const publicUrl = supabase.storage
-      .from('invoices')
-      .getPublicUrl(uploadData.path).data.publicUrl;
+    const publicUrl = supabase.storage.from('invoices').getPublicUrl(uploadData.path).data.publicUrl;
 
     const { error: upsertError } = await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number || 'Okänd',
       amount: parsed.total_amount,
       due_date: parsed.due_date,
-      supplier: parsed.supplier || 'Worldline/Bambora',
+      supplier: parsed.supplier || 'Okänd',
       ocr_number: parsed.ocr_number,
       bankgiro: parsed.bankgiro,
       plusgiro: parsed.plusgiro,
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertError) {
-      results.push({ error: 'Upsert error i Supabase', details: upsertError.message });
+      results.push({ error: 'Upsert-fel', details: upsertError.message });
       continue;
     }
 
