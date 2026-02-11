@@ -6,7 +6,6 @@ import FormData from 'form-data';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
- Created!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
@@ -39,7 +38,7 @@ export async function POST(request: Request) {
       try {
         const ocrResponse = await axios.post('https://api.ocr.space/parse/image', ocrForm, {
           headers: ocrForm.getHeaders(),
-          timeout:_measurement 90000,
+          timeout: 90000, // Fixat syntax-fel här
         });
         ocrData = ocrResponse.data;
         console.log('OCR Space response:', JSON.stringify(ocrData));
@@ -102,7 +101,7 @@ export async function POST(request: Request) {
         parsed.pdf_url = signedUrlData?.signedUrl || null;
       }
 
-      // DB upsert – bara essentiella fält (ingen full_parsed_data för att undvika kolumn-fel)
+      // DB upsert – bara essentiella fält
       const { error: dbError } = await supabase.from('invoices').upsert({
         invoice_number: parsed.invoice_number?.toString(),
         amount: parsed.total_amount?.toString(),
