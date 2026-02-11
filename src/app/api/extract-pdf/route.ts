@@ -26,7 +26,7 @@ const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella 
 
 Prioritera "Belopp att betala" eller grand total från första sidan. Hantera aggreggade fakturor med många line items (t.ex. Terminal fee).`;
 
-export async function POST(request: NextRequest	NextRequest) {
+export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const files = formData.getAll('files') as File[];
 
