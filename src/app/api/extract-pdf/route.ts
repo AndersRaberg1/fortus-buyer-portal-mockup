@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // @ts-ignore – Grok vision stöds, men OpenAI SDK-typer klagar på custom model/baseURL
     const completion = await grok.chat.completions.create({
-      model: 'grok-beta',  // Vision-capable model (perfekt för fakturor)
+      model: 'grok-beta',  // Vision-capable (perfekt för fakturor)
       messages: [
         {
           role: 'user',
@@ -69,12 +69,25 @@ export async function POST(request: NextRequest) {
       const content = completion.choices[0].message.content?.trim() || '';
       parsed = JSON.parse(content);
     } catch (e) {
-      results.push({ error: 'JSON parse fel från Grok', details: e });
+      results.push({ error: 'JSON parse fel från Grok', details: String(e) });
       continue;
     }
 
     const fileName = `${Date.now()}-${file.name}`;
-    const { data: { publicUrl } } = await supabase.storage.from('invoices').upload(`invoices/${fileName}`, buffer, { upsert: true });
+
+    // Fixad Supabase-upload (v2+ hanterar publicUrl så här)
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('invoices')
+      .upload(`invoices/${fileName}`, buffer, { upsert: true });
+
+    if (uploadError) {
+      results.push({ error: 'Storage upload error', details: uploadError.message });
+      continue;
+    }
+
+    const publicUrl = supabase.storage
+      .from('invoices')
+      .getPublicUrl(uploadData.path).data.publicUrl;
 
     await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number || 'Okänd',
@@ -89,7 +102,7 @@ export async function POST(request: NextRequest) {
       full_parsed_data: parsed,
     });
 
-    results.push({ success: true, parsed });
+    results.push({ success: true, parsed, publicUrl });
   }
 
   return Response.json({ results });
