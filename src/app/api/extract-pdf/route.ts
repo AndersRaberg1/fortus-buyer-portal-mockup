@@ -10,7 +10,7 @@ const grok = new OpenAI({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella format, inkl DHL, Worldline, Telav m.fl.). Returnera BARA giltig JSON, ingen annan text eller markdown:
+const VISION_PROMPT = `Extrahera från fakturabilderna (svenska/internationella format, inkl Worldline/Bambora, DHL m.fl.). Returnera BARA giltig JSON, ingen annan text eller markdown:
 
 {
   "invoice_number": string,
@@ -49,28 +49,35 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // @ts-ignore – Grok vision stöds, men OpenAI SDK-typer klagar på custom model/baseURL
-    const completion = await grok.chat.completions.create({
-      model: 'grok-beta',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: VISION_PROMPT },
-            ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
-          ]
-        }
-      ],
-      temperature: 0,
-      max_tokens: 1024,
-    });
+    let completion;
+    try {
+      // @ts-ignore – Grok vision stöds, men OpenAI SDK-typer klagar på custom model/baseURL
+      completion = await grok.chat.completions.create({
+        model: 'grok-4',  // Aktuell vision-model (feb 2026, stödjer bilder perfekt)
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: VISION_PROMPT },
+              ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
+            ]
+          }
+        ],
+        temperature: 0,
+        max_tokens: 1024,
+      });
+    } catch (e) {
+      results.push({ error: 'Grok API-call misslyckades', details: String(e) });
+      continue;
+    }
 
     let parsed;
     try {
       const content = completion.choices[0].message.content?.trim() || '';
+      if (!content) throw new Error('Tom response från Grok');
       parsed = JSON.parse(content);
     } catch (e) {
-      results.push({ error: 'JSON parse fel från Grok', details: String(e) });
+      results.push({ error: 'JSON parse fel från Grok', details: String(e), raw: completion.choices[0].message.content });
       continue;
     }
 
@@ -89,11 +96,11 @@ export async function POST(request: NextRequest) {
       .from('invoices')
       .getPublicUrl(uploadData.path).data.publicUrl;
 
-    await supabase.from('invoices').upsert({
+    const { error: upsertError } = await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number || 'Okänd',
       amount: parsed.total_amount,
       due_date: parsed.due_date,
-      supplier: parsed.supplier || 'Okänd leverantör',
+      supplier: parsed.supplier || 'Worldline/Bambora',
       ocr_number: parsed.ocr_number,
       bankgiro: parsed.bankgiro,
       plusgiro: parsed.plusgiro,
@@ -102,10 +109,14 @@ export async function POST(request: NextRequest) {
       full_parsed_data: parsed,
     });
 
+    if (upsertError) {
+      results.push({ error: 'Upsert error i Supabase', details: upsertError.message });
+      continue;
+    }
+
     results.push({ success: true, parsed, publicUrl });
   }
 
-  // Refreshar invoices-sidan direkt efter upload
   revalidatePath('/invoices');
 
   return Response.json({ results });
