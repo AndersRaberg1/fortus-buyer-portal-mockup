@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import * as pdfjs from 'pdfjs-dist';
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY!,
@@ -56,18 +55,10 @@ export async function POST(request: NextRequest) {
 
     let text = '';
     if (file.type === 'application/pdf') {
-      const loadingTask = pdfjs.getDocument({ data: buffer });
-      const pdfDocument = await loadingTask.promise;
-      let fullText = '';
-
-      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-        const page = await pdfDocument.getPage(pageNum);
-        const content = await page.getTextContent();
-        const pageText = content.items.map((item: any) => item.str).join(' ');
-        fullText += pageText + ' ';
-      }
-
-      text = fullText.trim();
+      const pdfParseLib = await import('pdf-parse');
+      // @ts-ignore – bypassar Turbopack/TS-fel (runtime funkar)
+      const data = await pdfParseLib.default(buffer);
+      text = data.text;
     } else {
       return NextResponse.json({ error: 'Endast PDF stöds' }, { status: 400 });
     }
