@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// PDF.js worker (nödvändig för client-side konvertering)
+// PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const supabase = createClient(
@@ -39,7 +39,7 @@ export default function Invoices() {
   useEffect(() => {
     const lower = searchTerm.toLowerCase();
     setFilteredInvoices(
-      invoices.filter(inv =>
+      invoices.filter((inv) =>
         JSON.stringify(Object.values(inv || {})).toLowerCase().includes(lower)
       )
     );
@@ -53,7 +53,7 @@ export default function Invoices() {
 
     const file = acceptedFiles[0];
     const formData = new FormData();
-    let filesToSend: File[] = [file]; // Alltid skicka original PDF/bild
+    let filesToSend: File[] = [file];
 
     if (file.type === 'application/pdf') {
       try {
@@ -68,16 +68,16 @@ export default function Invoices() {
           canvas.height = viewport.height;
           const context = canvas.getContext('2d')!;
           await page.render({ canvasContext: context, viewport }).promise;
-          const blob = await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), 'image/png'));
+          const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
           filesToSend.push(new File([blob], `page-${pageNum}.png`, { type: 'image/png' }));
         }
       } catch (err) {
-        setStatusMessage('PDF-konvertering misslyckades – skickar ändå original');
+        setStatusMessage('PDF-konvertering misslyckades – skickar original ändå');
         console.error('PDF render error:', err);
       }
     }
 
-    filesToSend.forEach(f => formData.append('files', f));
+    filesToSend.forEach((f) => formData.append('files', f));
 
     try {
       const res = await fetch('/api/extract-pdf', {
@@ -119,7 +119,9 @@ export default function Invoices() {
 
     if (pdf_url) {
       const fileName = pdf_url.split('/').pop();
-      await supabase.storage.from('invoices').remove([`invoices/${fileName}`]);
+      if (fileName) {
+        await supabase.storage.from('invoices').remove([`invoices/${fileName}`]);
+      }
     }
 
     await supabase.from('invoices').delete().eq('id', id);
@@ -130,7 +132,6 @@ export default function Invoices() {
     <div className="max-w-7xl mx-auto p-6">
       <h1 className="text-4xl font-bold mb-10 text-center">Fakturor</h1>
 
-      {/* Upload dropzone */}
       <section className="mb-12">
         <div
           {...getRootProps()}
@@ -153,7 +154,6 @@ export default function Invoices() {
         </div>
       </section>
 
-      {/* Sök */}
       <div className="relative mb-10 max-w-md mx-auto">
         <Search className="absolute left-4 top-3.5 w-6 h-6 text-gray-500" />
         <input
@@ -165,7 +165,6 @@ export default function Invoices() {
         />
       </div>
 
-      {/* Fakturalista */}
       {filteredInvoices.length === 0 ? (
         <p className="text-center text-gray-500 text-xl py-20">Inga fakturor hittades.</p>
       ) : (
@@ -181,8 +180,47 @@ export default function Invoices() {
 
               <div className="space-y-3 text-lg">
                 <p className="text-3xl font-bold text-blue-600">
-                  {inv.amount?.toLocaleString('sv-SE') || '—'} kr
+                  {inv.amount ? `${Number(inv.amount).toLocaleString('sv-SE')} kr` : '—'}
                 </p>
-                <p><strong>Förfallodatum:</strong> {inv.due_date || '—'}</p>
-                <p><strong>Leverantör:</strong> {inv.supplier || '—'}</p>
-                <p><strong>Fakturanr:</strong> {inv.invoice_number
+                <p>
+                  <strong>Förfallodatum:</strong> {inv.due_date || '—'}
+                </p>
+                <p>
+                  <strong>Leverantör:</strong> {inv.supplier || '—'}
+                </p>
+                <p>
+                  <strong>Fakturanr:</strong> {inv.invoice_number || '—'}
+                </p>
+                <p>
+                  <strong>OCR:</strong> {inv.ocr_number || '—'}
+                </p>
+                <p>
+                  <strong>Bankgiro:</strong> {inv.bankgiro || '—'}
+                </p>
+              </div>
+
+              <div className="mt-8 flex gap-4">
+                {inv.pdf_url && (
+                  <a
+                    href={inv.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 text-center bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
+                  >
+                    Öppna PDF
+                  </a>
+                )}
+                <Link
+                  href="/fortusflex"
+                  className="flex-1 text-center bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition"
+                >
+                  FortusFlex-kalkyl
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
