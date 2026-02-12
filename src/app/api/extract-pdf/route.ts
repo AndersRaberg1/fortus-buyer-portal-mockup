@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     let completion;
-    let parsed = {};  // Deklareras här för att undvika shorthand-fel
+    let parsed: any = {};  // Deklareras utanför try med any för type-safety
     try {
       completion = await grok.chat.completions.create({
         model: 'grok-4',
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       console.log('PARSED OK:', parsed);
     } catch (e: any) {
       console.error('GROK API-FEL:', e.message || String(e));
-      results.push({ error: 'Grok API-fel – kolla Vercel logs', details: e.message || String(e) });
+      results.push({ error: 'Grok API-fel – kolla Vercel logs för details', details: e.message || String(e) });
       continue;
     }
 
@@ -94,14 +94,14 @@ export async function POST(request: NextRequest) {
     const publicUrl = supabase.storage.from('invoices').getPublicUrl(uploadData.path).data.publicUrl;
 
     const { error: upsertError } = await supabase.from('invoices').upsert({
-      invoice_number: parsed.invoice_number || 'Okänd',
-      amount: Number(parsed.total_amount) ?? 0,
-      due_date: parsed.due_date || null,
-      supplier: parsed.supplier || 'Okänd',
-      ocr_number: parsed.ocr_number || null,
-      bankgiro: parsed.bankgiro || null,
-      plusgiro: parsed.plusgiro || null,
-      iban: parsed.iban || null,
+      invoice_number: parsed?.invoice_number || 'Okänd',
+      amount: Number(parsed?.total_amount) ?? 0,
+      due_date: parsed?.due_date || null,
+      supplier: parsed?.supplier || 'Okänd',
+      ocr_number: parsed?.ocr_number || null,
+      bankgiro: parsed?.bankgiro || null,
+      plusgiro: parsed?.plusgiro || null,
+      iban: parsed?.iban || null,
       pdf_url: publicUrl,
       full_parsed_data: parsed,
     });
