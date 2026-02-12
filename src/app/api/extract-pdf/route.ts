@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (file.type.startsWith('image/')) {
       images.push(`data:${file.type};base64,${buffer.toString('base64')}`);
     } else {
-      results.push({ error: 'Ladda upp som bilder (PNG/JPEG) – PDF-support senare' });
+      results.push({ error: 'Ladda upp som bilder (PNG/JPEG) för tillfället' });
       continue;
     }
 
@@ -52,15 +52,15 @@ export async function POST(request: NextRequest) {
     let completion;
     try {
       completion = await grok.chat.completions.create({
-        model: 'grok-4',  // Senaste flaggskeppsmodellen feb 2026 – full vision + reasoning
+        model: 'grok-4-1-fast-reasoning',  // Senaste multimodal/vision-modellen feb 2026
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extrahera all nyckeldata från fakturabilderna.' },
-              ...images.map(img => ({ type: 'image_url', image_url: { url: img } }))
-            ]
+              { type: 'text', text: 'Extrahera all nyckeldata från fakturabilderna (flera sidor om det finns).' },
+              ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img } }))
+            ] as any  // Fixar type-error för vision/multimodal
           }
         ],
         response_format: { type: "json_object" },
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertError) {
-      results.push({ error: 'Upsert-fel i Supabase – kolla permissions/RLS/kolumner', details: upsertError.message });
+      results.push({ error: 'Upsert-fel i Supabase', details: upsertError.message });
       continue;
     }
 
