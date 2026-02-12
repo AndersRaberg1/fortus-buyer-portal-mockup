@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import * as pdfjs from 'pdfjs-dist';
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -39,78 +38,44 @@ export async function POST(request: NextRequest) {
     let originalPdfBuffer: Buffer | null = null;
     let originalFileName: string | null = null;
     let imageBase64s: string[] = [];
-    let textContent = '';
 
-    // Samla data
+    // Samla filer: bilder + original PDF
     for (const file of files) {
-      const loader = await file.arrayBuffer();
-      const buffer = Buffer.from(loader);
+      const buffer = Buffer.from(await file.arrayBuffer());
 
       if (file.type === 'application/pdf') {
         originalPdfBuffer = buffer;
         originalFileName = file.name;
-
-        // Server-side text-extraction med pdfjs-dist
-        try {
-          const loadingTask = pdfjs.getDocument({ data: buffer });
-          const pdfDocument = await loadingTask.promise;
-          let fullText = '';
-
-          for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-            const page = await pdfDocument.getPage(pageNum);
-            const content = await page.getTextContent();
-            const pageText = content.items.map((item: any) => (item.str || '')).join(' ');
-            fullText += pageText + ' ';
-          }
-
-          textContent = fullText.trim();
-          console.log(`Text extraherad (pdfjs): ${textContent.length} tecken`);
-        } catch (err) {
-          console.log('Text-extraction misslyckades – fallback till vision');
-        }
       } else if (file.type.startsWith('image/')) {
         imageBase64s.push(`data:${file.type};base64,${buffer.toString('base64')}`);
       }
     }
 
-    // Grok-parsing (hybrid)
+    if (imageBase64s.length === 0) {
+      return NextResponse.json({ error: 'Inga bilder att analysera – ladda upp PDF eller bild' }, { status: 400 });
+    }
+
+    // Alltid Grok Vision (klienten skickar renderade sidor som bilder)
     let parsed: any = {};
     try {
-      let completion;
-      if (textContent.length > 500) {
-        // Digital PDF → text-parsing
-        completion = await grok.chat.completions.create({
-          model: 'grok-4',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: textContent },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0,
-        });
-      } else if (imageBase64s.length > 0) {
-        // Skannad → vision (fixad type-narrowing)
-        completion = await grok.chat.completions.create({
-          model: 'grok-4',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text' as const, text: `Extrahera från ${imageBase64s.length} sidor:` },
-                ...imageBase64s.map(url => ({
-                  type: 'image_url' as 'image_url',  // <-- Type-narrowing fix
-                  image_url: { url },
-                })),
-              ],
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0,
-        });
-      } else {
-        throw new Error('Ingen läsbar data');
-      }
+      const completion = await grok.chat.completions.create({
+        model: 'grok-4',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text' as const, text: `Extrahera från ${imageBase64s.length} sidor:` },
+              ...imageBase64s.map(url => ({
+                type: 'image_url' as const,
+                image_url: { url },
+              })),
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+      });
 
       const raw = completion.choices[0].message.content?.trim() || '{}';
       parsed = JSON.parse(raw);
@@ -122,35 +87,4 @@ export async function POST(request: NextRequest) {
     let publicUrl = '';
     if (originalPdfBuffer && originalFileName) {
       const fileName = `${Date.now()}-${originalFileName}`;
-      const { error: uploadError } = await supabase.storage
-        .from('invoices')
-        .upload(`invoices/${fileName}`, originalPdfBuffer, { contentType: 'application/pdf', upsert: true });
-
-      if (uploadError) return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
-
-      publicUrl = supabase.storage.from('invoices').getPublicUrl(`invoices/${fileName}`).data.publicUrl;
-    }
-
-    // Spara till DB
-    const { error: dbError } = await supabase.from('invoices').upsert({
-      invoice_number: parsed.invoice_number ?? null,
-      invoice_date: parsed.invoice_date ?? null,
-      due_date: parsed.due_date ?? null,
-      amount: parsed.total_amount ?? null,
-      vat_amount: parsed.vat_amount ?? null,
-      supplier: parsed.supplier ?? null,
-      ocr_number: parsed.ocr_number ?? null,
-      bankgiro: parsed.bankgiro ?? null,
-      customer_number: parsed.customer_number ?? null,
-      vat_percentage: parsed.vat_percentage ?? null,
-      pdf_url: publicUrl,
-    });
-
-    if (dbError) return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
-
-    return NextResponse.json({ success: true, data: parsed, pdf_url: publicUrl });
-  } catch (error: any) {
-    console.error('Serverfel:', error);
-    return NextResponse.json({ error: error.message || 'Serverfel' }, { status: 500 });
-  }
-}
+      const { error: uploadError } = await supabase
