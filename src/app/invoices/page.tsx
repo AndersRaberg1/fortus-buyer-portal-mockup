@@ -2,17 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient'; // Singleton-import
 import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 // Force dynamic rendering – ingen static prerendering
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -45,7 +40,7 @@ export default function Invoices() {
   }, [searchTerm, invoices]);
 
   const onDrop = async (acceptedFiles: File[]) => {
-    if ( acceptedFiles.length === 0) return;
+    if (acceptedFiles.length === 0) return;
 
     setUploadStatus('loading');
     setStatusMessage('Bearbetar faktura...');
@@ -56,10 +51,7 @@ export default function Invoices() {
 
     if (file.type === 'application/pdf') {
       try {
-        // Dynamisk import – laddas bara i browsern
         const pdfjsLib = await import('pdfjs-dist');
-
-        // Stabil worker-URL (ingen 404)
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@latest/build/pdf.worker.min.mjs';
 
         const arrayBuffer = await file.arrayBuffer();
@@ -144,7 +136,7 @@ export default function Invoices() {
       <section className="mb-12">
         <div
           {...getRootProps()}
-          className={`border-4 border-dashed rounded-2 Photo p-20 text-center cursor-pointer transition-all ${
+          className={`border-4 border-dashed rounded-2xl p-20 text-center cursor-pointer transition-all ${
             isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
           }`}
         >
@@ -169,7 +161,7 @@ export default function Invoices() {
           type="text"
           placeholder="Sök i fakturor..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChang e={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -189,7 +181,7 @@ export default function Invoices() {
 
               <div className="space-y-3 text-lg">
                 <p className="text-3xl font-bold text-blue-600">
-                  {inv.amount ? `${Number(inv.amount).toLocaleString('sv-SE')} kr` : '—'}
+                  {inv.amount ? `${parseFloat(inv.amount || '0').toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr` : '—'}
                 </p>
                 <p>
                   <strong>Förfallodatum:</strong> {inv.due_date || '—'}
