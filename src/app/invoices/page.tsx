@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { supabase } from '@/lib/supabaseClient'; // Singleton-import
+import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
-// Force dynamic rendering – ingen static prerendering
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
 export default function Invoices() {
@@ -161,7 +161,7 @@ export default function Invoices() {
           type="text"
           placeholder="Sök i fakturor..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}  // FIX: onChange (ingen mellanslag)
+          onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -181,7 +181,7 @@ export default function Invoices() {
 
               <div className="space-y-3 text-lg">
                 <p className="text-3xl font-bold text-blue-600">
-                  {inv.amount ? `${parseFloat(inv.amount || '0').toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr` : '—'}
+                  {inv.amount ? `${parseFloat(inv.amount || '0').toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kr` : '—'}
                 </p>
                 <p>
                   <strong>Förfallodatum:</strong> {inv.due_date || '—'}
