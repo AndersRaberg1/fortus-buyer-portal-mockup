@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
+import * as pdfjs from 'pdfjs-dist';
 
 const grok = new OpenAI({
   apiKey: process.env.GROK_API_KEY!,
@@ -12,7 +13,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Extrahera exakt dessa fält och svara ENDAST med giltig JSON (inga förklaringar):
+const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Extrahera exakt dessa fält och svara ENDAST med giltig JSON:
 {
   "invoice_number": string | null,
   "invoice_date": "YYYY-MM-DD" | null,
@@ -40,18 +41,29 @@ export async function POST(request: NextRequest) {
     let imageBase64s: string[] = [];
     let textContent = '';
 
-    // Samla data från filer
+    // Samla data
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer());
+
       if (file.type === 'application/pdf') {
         originalPdfBuffer = buffer;
         originalFileName = file.name;
-        // Försök text-extraction (dynamisk import för att undvika Turbopack-fel)
+
+        // Text-extraction med pdfjs-dist (server-side, ingen worker behövs)
         try {
-          const pdfParseLib = await import('pdf-parse');
-          const pdfData = await pdfParseLib.default(buffer);
-          textContent = pdfData.text.trim();
-          console.log(`Text extraherad: ${textContent.length} tecken`);
+          const loadingTask = pdfjs.getDocument({ data: buffer });
+          const pdfDocument = await loadingTask.promise;
+          let fullText = '';
+
+          for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+            const page = await pdfDocument.getPage(pageNum);
+            const content = await page.getTextContent();
+            const pageText = content.items.map((item: any) => item.str).join(' ');
+            fullText += pageText + ' ';
+          }
+
+          textContent = fullText.trim();
+          console.log(`Text extraherad med pdfjs: ${textContent.length} tecken`);
         } catch (err) {
           console.log('Text-extraction misslyckades – fallback till vision');
         }
@@ -60,12 +72,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Grok-parsing
+    // Grok-parsing (hybrid)
     let parsed: any = {};
     try {
       let completion;
       if (textContent.length > 500) {
-        // Bra text → använd text-modell (snabbt, ingen konvertering)
+        // Digital PDF → text-parsing (snabbt/billigt)
         completion = await grok.chat.completions.create({
           model: 'grok-4',
           messages: [
@@ -76,7 +88,7 @@ export async function POST(request: NextRequest) {
           temperature: 0,
         });
       } else if (imageBase64s.length > 0) {
-        // Fallback till vision
+        // Skannad → vision
         completion = await grok.chat.completions.create({
           model: 'grok-4',
           messages: [
@@ -93,7 +105,7 @@ export async function POST(request: NextRequest) {
           temperature: 0,
         });
       } else {
-        throw new Error('Ingen läsbar data i filen');
+        throw new Error('Ingen läsbar data');
       }
 
       const raw = completion.choices[0].message.content?.trim() || '{}';
@@ -110,26 +122,31 @@ export async function POST(request: NextRequest) {
         .from('invoices')
         .upload(`invoices/${fileName}`, originalPdfBuffer, { contentType: 'application/pdf', upsert: true });
 
-      if (uploadError) {
-        return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
-      }
+      if (uploadError) return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
+
       publicUrl = supabase.storage.from('invoices').getPublicUrl(`invoices/${fileName}`).data.publicUrl;
     }
 
-    // Spara till DB
+    // Spara till DB (anpassa kolumner efter ditt schema)
     const { error: dbError } = await supabase.from('invoices').upsert({
-      ...parsed,
-      amount: parsed.total_amount ?? null, // Anpassa till dina kolumner
+      invoice_number: parsed.invoice_number ?? null,
+      invoice_date: parsed.invoice_date ?? null,
+      due_date: parsed.due_date ?? null,
+      amount: parsed.total_amount ?? null,
+      vat_amount: parsed.vat_amount ?? null,
+      supplier: parsed.supplier ?? null,
+      ocr_number: parsed.ocr_number ?? null,
+      bankgiro: parsed.bankgiro ?? null,
+      customer_number: parsed.customer_number ?? null,
+      vat_percentage: parsed.vat_percentage ?? null,
       pdf_url: publicUrl,
     });
 
-    if (dbError) {
-      return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
-    }
+    if (dbError) return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
 
     return NextResponse.json({ success: true, data: parsed, pdf_url: publicUrl });
   } catch (error: any) {
-    console.error('FEL:', error);
+    console.error('Serverfel:', error);
     return NextResponse.json({ error: error.message || 'Serverfel' }, { status: 500 });
   }
 }
