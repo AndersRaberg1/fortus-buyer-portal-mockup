@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
-// Force dynamic rendering – ingen static prerendering (fixar DOMMatrix-felet)
+// Force dynamic rendering – ingen static prerendering
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -45,7 +45,7 @@ export default function Invoices() {
   }, [searchTerm, invoices]);
 
   const onDrop = async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return;
+    if ( acceptedFiles.length === 0) return;
 
     setUploadStatus('loading');
     setStatusMessage('Bearbetar faktura...');
@@ -56,9 +56,11 @@ export default function Invoices() {
 
     if (file.type === 'application/pdf') {
       try {
-        // Dynamisk import – laddas bara client-side
+        // Dynamisk import – laddas bara i browsern
         const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+        // Stabil worker-URL (ingen 404)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@latest/build/pdf.worker.min.mjs';
 
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -142,7 +144,7 @@ export default function Invoices() {
       <section className="mb-12">
         <div
           {...getRootProps()}
-          className={`border-4 border-dashed rounded-2xl p-20 text-center cursor-pointer transition-all ${
+          className={`border-4 border-dashed rounded-2 Photo p-20 text-center cursor-pointer transition-all ${
             isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
           }`}
         >
