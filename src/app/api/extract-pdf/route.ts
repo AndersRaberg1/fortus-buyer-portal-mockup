@@ -43,13 +43,14 @@ export async function POST(request: NextRequest) {
 
     // Samla data
     for (const file of files) {
-      const buffer = Buffer.from(await file.arrayBuffer());
+      const loader = await file.arrayBuffer();
+      const buffer = Buffer.from(loader);
 
       if (file.type === 'application/pdf') {
         originalPdfBuffer = buffer;
         originalFileName = file.name;
 
-        // Text-extraction med pdfjs-dist (server-side, ingen worker behövs)
+        // Server-side text-extraction med pdfjs-dist
         try {
           const loadingTask = pdfjs.getDocument({ data: buffer });
           const pdfDocument = await loadingTask.promise;
@@ -58,12 +59,12 @@ export async function POST(request: NextRequest) {
           for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
             const page = await pdfDocument.getPage(pageNum);
             const content = await page.getTextContent();
-            const pageText = content.items.map((item: any) => item.str).join(' ');
+            const pageText = content.items.map((item: any) => (item.str || '')).join(' ');
             fullText += pageText + ' ';
           }
 
           textContent = fullText.trim();
-          console.log(`Text extraherad med pdfjs: ${textContent.length} tecken`);
+          console.log(`Text extraherad (pdfjs): ${textContent.length} tecken`);
         } catch (err) {
           console.log('Text-extraction misslyckades – fallback till vision');
         }
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
     try {
       let completion;
       if (textContent.length > 500) {
-        // Digital PDF → text-parsing (snabbt/billigt)
+        // Digital PDF → text-parsing
         completion = await grok.chat.completions.create({
           model: 'grok-4',
           messages: [
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
           temperature: 0,
         });
       } else if (imageBase64s.length > 0) {
-        // Skannad → vision
+        // Skannad → vision (fixad type-narrowing)
         completion = await grok.chat.completions.create({
           model: 'grok-4',
           messages: [
@@ -96,8 +97,11 @@ export async function POST(request: NextRequest) {
             {
               role: 'user',
               content: [
-                { type: 'text', text: `Extrahera från ${imageBase64s.length} sidor:` },
-                ...imageBase64s.map(url => ({ type: 'image_url', image_url: { url } })),
+                { type: 'text' as const, text: `Extrahera från ${imageBase64s.length} sidor:` },
+                ...imageBase64s.map(url => ({
+                  type: 'image_url' as 'image_url',  // <-- Type-narrowing fix
+                  image_url: { url },
+                })),
               ],
             },
           ],
@@ -127,7 +131,7 @@ export async function POST(request: NextRequest) {
       publicUrl = supabase.storage.from('invoices').getPublicUrl(`invoices/${fileName}`).data.publicUrl;
     }
 
-    // Spara till DB (anpassa kolumner efter ditt schema)
+    // Spara till DB
     const { error: dbError } = await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number ?? null,
       invoice_date: parsed.invoice_date ?? null,
