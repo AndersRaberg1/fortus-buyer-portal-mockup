@@ -5,10 +5,9 @@ import { useDropzone } from 'react-dropzone';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
 
-// PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Force dynamic rendering – ingen static prerendering (fixar DOMMatrix-felet)
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,6 +56,10 @@ export default function Invoices() {
 
     if (file.type === 'application/pdf') {
       try {
+        // Dynamisk import – laddas bara client-side
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
@@ -70,7 +73,7 @@ export default function Invoices() {
           await page.render({
             canvasContext: context,
             viewport: viewport,
-            canvas: canvas,  // <-- Fix för TS-type i pdfjs-dist
+            canvas: canvas,
           }).promise;
           const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
           filesToSend.push(new File([blob], `page-${pageNum}.png`, { type: 'image/png' }));
