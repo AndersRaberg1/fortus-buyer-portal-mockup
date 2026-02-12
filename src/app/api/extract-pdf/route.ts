@@ -12,23 +12,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Läs ALLA sidor noga.
+const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Läs ALLA sidor noga, inklusive tabeller och fotnoter.
 
 Extrahera exakt:
-- invoice_number: Fakturanummer
+- invoice_number: Fakturanummer (ofta högst upp)
 - invoice_date: Fakturadatum (YYYY-MM-DD)
-- due_date: Förfallodatum (YYYY-MM-DD)
-- total_amount: Totalt att betala (inkl moms, nummer)
+- due_date: Förfallodatum (YYYY-MM-DD, ofta "Förfallodatum" eller "Att betala senast")
+- total_amount: Totalt att betala (inkl moms, sök efter "Att betala", "Totalt", "Belopp att betala" – nummer)
 - vat_amount: Momsbelopp
-- supplier: Leverantörens namn
-- ocr_number: OCR-nummer (ofta längst ner)
-- bankgiro: Bankgiro (ofta under betalningsinfo)
-- customer_number: Kundnummer/referens
+- supplier: Leverantörens namn (ofta högst upp)
+- ocr_number: OCR-nummer (längst ner, ofta "OCR", "Referensnr" eller "Betalningsreferens")
+- bankgiro: Bankgiro eller Plusgiro (ofta under betalningsinformation, format XXX-XXXX)
+- customer_number: Kundnummer eller referens
 - vat_percentage: Momsprocent (t.ex. 25%)
 
-Exempel på OCR/bankgiro: "OCR: 123456789" eller "Bankgiro 123-4567".
+Exempel på OCR/bankgiro:
+- "OCR: 1015013103" → ocr_number: "1015013103"
+- "Bankgiro 505-1303" → bankgiro: "505-1303"
+- "Betalningsmottagare: Bankgiro 123-4567" → bankgiro: "123-4567"
 
-Svara ENDAST med giltig JSON, inga förklaringar.`;
+Prioritera "Totalt att betala" eller "Att betala". Svara ENDAST med giltig JSON, inga förklaringar eller extra text.`;
 
 export async function POST(request: NextRequest) {
   try {
