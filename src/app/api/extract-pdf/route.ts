@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-import pdfParse from 'pdf-parse';
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY!,
@@ -30,26 +29,35 @@ Fält:
 }
 
 Regler:
-- total_amount: "Total SEK", "Total att betala", "Att betala" eller "Totalbelopp" (inkl moms)
-- due_date: "Final payment date", "Förfallodatum" eller "Att betala senast"
-- bankgiro: Sök efter "Bankgiro" eller "Bg"
-- ocr_number: Sök efter "OCR" eller "Referensnr"
+- invoice_number: "Invoice no.", "Fakturanr" eller liknande
+- invoice_date: "Date of invoice", "Fakturadatum"
+- due_date: "Final payment date", "Förfallodatum", "Att betala senast"
+- total_amount: "Total SEK", "Total att betala", "Att betala", "Totalbelopp"
 - supplier: Företag högst upp
-- invoice_date: "Date of invoice" eller "Fakturadatum"`;
+- customer_number: "Client no.", "Kundnummer"
+- bankgiro: "Bankgiro", "Bg"
+- ocr_number: "OCR", "Referensnr"
+- vat_percentage: Momsprocent eller "VAT"
+
+Använd null om inte hittat.`;
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
 
-    if (files.length === 0) return NextResponse.json({ error: 'Inga filer' }, { status: 400 });
+    if (files.length === 0) {
+      return NextResponse.json({ error: 'Inga filer uppladdade' }, { status: 400 });
+    }
 
     const file = files[0];
     const buffer = Buffer.from(await file.arrayBuffer());
 
     let text = '';
     if (file.type === 'application/pdf') {
-      const data = await pdfParse(buffer);
+      // Dynamisk import – fixar Turbopack-felet
+      const pdfParseLib = await import('pdf-parse');
+      const data = await pdfParseLib.default(buffer);
       text = data.text;
     } else {
       return NextResponse.json({ error: 'Endast PDF stöds' }, { status: 400 });
@@ -72,21 +80,29 @@ export async function POST(request: NextRequest) {
       .from('invoices')
       .upload(`invoices/${fileName}`, buffer, { contentType: 'application/pdf', upsert: true });
 
-    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    if (uploadError) return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
 
     const publicUrl = supabase.storage.from('invoices').getPublicUrl(`invoices/${fileName}`).data.publicUrl;
 
     const { error: dbError } = await supabase.from('invoices').upsert({
-      ...parsed,
+      invoice_number: parsed.invoice_number ?? null,
+      invoice_date: parsed.invoice_date ?? null,
+      due_date: parsed.due_date ?? null,
       amount: parsed.total_amount ?? null,
+      vat_amount: parsed.vat_amount ?? null,
+      supplier: parsed.supplier ?? null,
+      ocr_number: parsed.ocr_number ?? null,
+      bankgiro: parsed.bankgiro ?? null,
+      customer_number: parsed.customer_number ?? null,
+      vat_percentage: parsed.vat_percentage ?? null,
       pdf_url: publicUrl,
     });
 
-    if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
+    if (dbError) return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
 
     return NextResponse.json({ success: true, data: parsed, pdf_url: publicUrl });
   } catch (error: any) {
-    console.error('Fel:', error);
+    console.error('Serverfel:', error);
     return NextResponse.json({ error: error.message || 'Serverfel' }, { status: 500 });
   }
 }
