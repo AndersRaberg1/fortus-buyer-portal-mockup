@@ -161,7 +161,7 @@ export default function Invoices() {
           type="text"
           placeholder="Sök i fakturor..."
           value={searchTerm}
-          onChang e={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => setSearchTerm(e.target.value)}  // FIX: onChange (ingen mellanslag)
           className="w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
