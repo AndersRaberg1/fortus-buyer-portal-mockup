@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Trash2, Search, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
-// Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
 export default function Invoices() {
