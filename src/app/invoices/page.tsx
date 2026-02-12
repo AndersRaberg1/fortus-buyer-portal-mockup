@@ -67,7 +67,11 @@ export default function Invoices() {
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           const context = canvas.getContext('2d')!;
-          await page.render({ canvasContext: context, viewport }).promise;
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas,  // <-- Fix för TS-type i pdfjs-dist
+          }).promise;
           const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
           filesToSend.push(new File([blob], `page-${pageNum}.png`, { type: 'image/png' }));
         }
