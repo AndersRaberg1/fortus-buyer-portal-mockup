@@ -29,10 +29,10 @@ Fält:
 }
 
 Regler:
-- invoice_number: "Invoice no.", "Fakturanr" eller liknande
+- invoice_number: "Invoice no.", "Fakturanr" eller "Invoice"
 - invoice_date: "Date of invoice", "Fakturadatum"
 - due_date: "Final payment date", "Förfallodatum", "Att betala senast"
-- total_amount: "Total SEK", "Total att betala", "Att betala", "Totalbelopp"
+- total_amount: "Total SEK", "Total att betala", "Att betala", "Totalbelopp", "Total"
 - supplier: Företag högst upp
 - customer_number: "Client no.", "Kundnummer"
 - bankgiro: "Bankgiro", "Bg"
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     let text = '';
     if (file.type === 'application/pdf') {
       const pdfParseLib = await import('pdf-parse');
-      // @ts-ignore – bypassar Turbopack/TS-fel (runtime funkar)
+      // @ts-ignore – bypassar Turbopack/TS-fel (runtime funkar perfekt)
       const data = await pdfParseLib.default(buffer);
       text = data.text;
     } else {
