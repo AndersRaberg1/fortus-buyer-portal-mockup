@@ -12,19 +12,23 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Extrahera exakt dessa fält och svara ENDAST med giltig JSON:
-{
-  "invoice_number": string | null,
-  "invoice_date": "YYYY-MM-DD" | null,
-  "due_date": "YYYY-MM-DD" | null,
-  "total_amount": number | null,
-  "vat_amount": number | null,
-  "supplier": string | null,
-  "ocr_number": string | null,
-  "bankgiro": string | null,
-  "customer_number": string | null,
-  "vat_percentage": string | null
-}`;
+const SYSTEM_PROMPT = `Du är expert på svenska leverantörsfakturor. Läs ALLA sidor noga.
+
+Extrahera exakt:
+- invoice_number: Fakturanummer
+- invoice_date: Fakturadatum (YYYY-MM-DD)
+- due_date: Förfallodatum (YYYY-MM-DD)
+- total_amount: Totalt att betala (inkl moms, nummer)
+- vat_amount: Momsbelopp
+- supplier: Leverantörens namn
+- ocr_number: OCR-nummer (ofta längst ner)
+- bankgiro: Bankgiro (ofta under betalningsinfo)
+- customer_number: Kundnummer/referens
+- vat_percentage: Momsprocent (t.ex. 25%)
+
+Exempel på OCR/bankgiro: "OCR: 123456789" eller "Bankgiro 123-4567".
+
+Svara ENDAST med giltig JSON, inga förklaringar.`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +43,6 @@ export async function POST(request: NextRequest) {
     let originalFileName: string | null = null;
     let imageBase64s: string[] = [];
 
-    // Samla filer: original PDF + renderade bilder från klienten
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -52,10 +55,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (imageBase64s.length === 0) {
-      return NextResponse.json({ error: 'Inga bilder att analysera – ladda upp PDF eller bild' }, { status: 400 });
+      return NextResponse.json({ error: 'Inga bilder att analysera' }, { status: 400 });
     }
 
-    // Grok Vision-parsing
     let parsed: any = {};
     try {
       const completion = await grok.chat.completions.create({
@@ -83,7 +85,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Grok-fel: ${err.message}` }, { status: 500 });
     }
 
-    // Spara original PDF
     let publicUrl = '';
     if (originalPdfBuffer && originalFileName) {
       const fileName = `${Date.now()}-${originalFileName}`;
@@ -94,14 +95,11 @@ export async function POST(request: NextRequest) {
           upsert: true,
         });
 
-      if (uploadError) {
-        return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
-      }
+      if (uploadError) return NextResponse.json({ error: `Storage-fel: ${uploadError.message}` }, { status: 500 });
 
       publicUrl = supabase.storage.from('invoices').getPublicUrl(`invoices/${fileName}`).data.publicUrl;
     }
 
-    // Spara till DB (anpassa kolumner efter ditt schema)
     const { error: dbError } = await supabase.from('invoices').upsert({
       invoice_number: parsed.invoice_number ?? null,
       invoice_date: parsed.invoice_date ?? null,
@@ -116,9 +114,7 @@ export async function POST(request: NextRequest) {
       pdf_url: publicUrl,
     });
 
-    if (dbError) {
-      return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
-    }
+    if (dbError) return NextResponse.json({ error: `DB-fel: ${dbError.message}` }, { status: 500 });
 
     return NextResponse.json({ success: true, data: parsed, pdf_url: publicUrl });
   } catch (error: any) {
