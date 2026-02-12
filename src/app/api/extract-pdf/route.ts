@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     let completion;
-    let parsed;
+    let parsed = {};  // Deklareras här för att undvika shorthand-fel
     try {
       completion = await grok.chat.completions.create({
         model: 'grok-4',
